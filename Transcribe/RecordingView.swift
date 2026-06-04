@@ -6,6 +6,7 @@ import AppKit
 struct RecordingView: View {
     @StateObject private var audioRecorder = AudioRecorderManager()
     @EnvironmentObject var appState: AppState
+    @EnvironmentObject var recordingLibrary: RecordingLibraryManager
     @State private var showingTranscription = false
     @State private var recordingTime: TimeInterval = 0
     @State private var recordingStartDate: Date?
@@ -14,18 +15,14 @@ struct RecordingView: View {
     @State private var playbackTime: TimeInterval = 0
     @State private var audioPlayer: AVAudioPlayer?
     @State private var showPermissionAlert = false
-    @State private var showLeaveConfirmation = false
+    @State private var savedRecordingID: UUID?
     
     var body: some View {
         VStack(spacing: 0) {
             // Header
             HStack {
                 Button(action: {
-                    if audioRecorder.isRecording || audioRecorder.hasRecording {
-                        showLeaveConfirmation = true
-                    } else {
-                        appState.showRecordingView = false
-                    }
+                    appState.showRecordingView = false
                 }) {
                     HStack(spacing: 6) {
                         Image(systemName: "chevron.left")
@@ -220,9 +217,15 @@ struct RecordingView: View {
                     // Transcribe button
                     Button(action: {
                         if let recordingURL = audioRecorder.recordingURL {
+                            let url = recordingLibrary.savedRecordings
+                                .first(where: { $0.id == savedRecordingID })?
+                                .audioURL(in: recordingLibrary.libraryURL) ?? recordingURL
                             appState.showRecordingView = false
-                            appState.currentTranscriptionURL = recordingURL
-                            appState.showTranscriptionView = true
+                            if let id = savedRecordingID {
+                                appState.openRecordingForTranscription(url, recordingID: id)
+                            } else {
+                                appState.openFileForTranscription(url)
+                            }
                         }
                     }) {
                         HStack(spacing: 8) {
@@ -263,23 +266,6 @@ struct RecordingView: View {
         } message: {
             Text(localized("mic_permission_message"))
         }
-        .alert(localized("leave_recording"), isPresented: $showLeaveConfirmation) {
-            Button(localized("stay"), role: .cancel) { }
-            Button(localized("leave"), role: .destructive) {
-                audioRecorder.stopInputMonitor()
-                if audioRecorder.isRecording {
-                    audioRecorder.stopRecording()
-                    timer?.invalidate()
-                    timer = nil
-                }
-                audioRecorder.deleteRecording()
-                appState.showRecordingView = false
-            }
-        } message: {
-            Text(audioRecorder.isRecording
-                 ? localized("recording_in_progress_leave")
-                 : localized("untranscribed_recording_leave"))
-        }
     }
     
     private func startRecording() {
@@ -319,6 +305,19 @@ struct RecordingView: View {
         audioRecorder.stopRecording()
         timer?.invalidate()
         timer = nil
+        
+        // Auto-save to library
+        if audioRecorder.hasRecording, let url = audioRecorder.recordingURL {
+            if let saved = recordingLibrary.save(
+                audioURL: url,
+                name: localized("new_recording"),
+                duration: audioRecorder.recordingDuration,
+                source: .recording
+            ) {
+                savedRecordingID = saved.id
+            }
+        }
+        
         // Restart input monitor so user can still see levels
         audioRecorder.startInputMonitor()
     }

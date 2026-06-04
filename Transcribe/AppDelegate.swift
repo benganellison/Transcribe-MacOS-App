@@ -10,6 +10,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var settingsManager: SettingsManager?
     
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Migrate existing temp recordings before cleanup
+        migrateExistingRecordingsIfNeeded()
         // Clean up any leftover files from previous session (in case of force quit)
         cleanupTemporaryFiles(isStartup: true)
         
@@ -53,6 +55,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             try FileManager.default.removeItem(at: tempDir)
         } catch {
             // Cleanup failed or directory doesn't exist
+        }
+    }
+    
+    private func migrateExistingRecordingsIfNeeded() {
+        guard !UserDefaults.standard.bool(forKey: "recordingMigrationCompleted") else { return }
+        defer { UserDefaults.standard.set(true, forKey: "recordingMigrationCompleted") }
+        
+        let tempRecordingsDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Transcribe")
+            .appendingPathComponent("Recordings")
+        
+        guard FileManager.default.fileExists(atPath: tempRecordingsDir.path),
+              let files = try? FileManager.default.contentsOfDirectory(
+                  at: tempRecordingsDir,
+                  includingPropertiesForKeys: [.creationDateKey]
+              ) else { return }
+        
+        let audioExtensions: Set<String> = ["m4a", "wav", "mp3", "aac", "flac"]
+        let audioFiles = files.filter { audioExtensions.contains($0.pathExtension.lowercased()) }
+        
+        guard !audioFiles.isEmpty else { return }
+        
+        // Move recordings to the library folder via RecordingLibraryManager
+        let library = RecordingLibraryManager()
+        for file in audioFiles {
+            let duration: TimeInterval = 0 // Duration unknown for migrated files
+            library.save(audioURL: file, name: file.deletingPathExtension().lastPathComponent, duration: duration, source: .recording)
         }
     }
     

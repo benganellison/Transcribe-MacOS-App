@@ -4,27 +4,24 @@ import AVFoundation
 struct SystemAudioRecordingView: View {
     @StateObject private var captureService = SystemAudioCaptureService()
     @EnvironmentObject var appState: AppState
+    @EnvironmentObject var recordingLibrary: RecordingLibraryManager
     @State private var recordingTime: TimeInterval = 0
     @State private var recordingStartDate: Date?
     @State private var timer: Timer?
     @State private var isPlaying = false
     @State private var audioPlayer: AVAudioPlayer?
-    @State private var showLeaveConfirmation = false
     @State private var showError = false
     @State private var errorMessage = ""
     @State private var micMixingEnabled = false
     @State private var showPermissionAlert = false
+    @State private var savedRecordingID: UUID?
     
     var body: some View {
         VStack(spacing: 0) {
             // Header
             HStack {
                 Button(action: {
-                    if captureService.isCapturing || captureService.hasRecording {
-                        showLeaveConfirmation = true
-                    } else {
-                        appState.showSystemAudioView = false
-                    }
+                    appState.showSystemAudioView = false
                 }) {
                     HStack(spacing: 6) {
                         Image(systemName: "chevron.left")
@@ -315,23 +312,6 @@ struct SystemAudioRecordingView: View {
         } message: {
             Text(errorMessage)
         }
-        .alert(localized("leave_recording"), isPresented: $showLeaveConfirmation) {
-            Button(localized("stay"), role: .cancel) { }
-            Button(localized("leave"), role: .destructive) {
-                if captureService.isCapturing {
-                    captureService.stopCapture()
-                    timer?.invalidate()
-                    timer = nil
-                }
-                captureService.deleteRecording()
-                captureService.stopMonitoring()
-                appState.showSystemAudioView = false
-            }
-        } message: {
-            Text(captureService.isCapturing
-                 ? localized("recording_in_progress_leave")
-                 : localized("untranscribed_recording_leave"))
-        }
         .alert(localized("mic_permission_required"), isPresented: $showPermissionAlert) {
             Button("OK") {
                 micMixingEnabled = false
@@ -390,6 +370,18 @@ struct SystemAudioRecordingView: View {
         captureService.stopCapture()
         timer?.invalidate()
         timer = nil
+        
+        // Auto-save to library
+        if captureService.hasRecording, let url = captureService.recordingURL {
+            if let saved = recordingLibrary.save(
+                audioURL: url,
+                name: localized("system_audio"),
+                duration: recordingTime,
+                source: .systemAudio
+            ) {
+                savedRecordingID = saved.id
+            }
+        }
     }
     
     private func togglePlayback() {
