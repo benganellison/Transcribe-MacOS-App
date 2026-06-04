@@ -5,8 +5,16 @@ class AppState: ObservableObject {
     @Published var showTranscriptionView = false
     @Published var showRecordingView = false
     @Published var showSystemAudioView = false
+    @Published var showRecordingLibrary = false
+    @Published var currentRecordingID: UUID?
     
     func openFileForTranscription(_ url: URL) {
+        currentTranscriptionURL = url
+        showTranscriptionView = true
+    }
+    
+    func openRecordingForTranscription(_ url: URL, recordingID: UUID) {
+        currentRecordingID = recordingID
         currentTranscriptionURL = url
         showTranscriptionView = true
     }

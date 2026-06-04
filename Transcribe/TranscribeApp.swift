@@ -6,6 +6,7 @@ struct TranscribeApp: App {
     @StateObject private var appState = AppState()
     @StateObject private var transcriptionManager = TranscriptionManager()
     @StateObject private var settingsManager = SettingsManager()
+    @StateObject private var recordingLibrary = RecordingLibraryManager()
     @AppStorage("appColorScheme") private var appColorScheme: String = "dark"
 
     private var preferredScheme: ColorScheme? {
@@ -22,6 +23,7 @@ struct TranscribeApp: App {
                 .environmentObject(appState)
                 .environmentObject(transcriptionManager)
                 .environmentObject(settingsManager)
+                .environmentObject(recordingLibrary)
                 .frame(minWidth: 900, minHeight: 700)
                 .frame(idealWidth: 1200, idealHeight: 850)
                 .preferredColorScheme(preferredScheme)
