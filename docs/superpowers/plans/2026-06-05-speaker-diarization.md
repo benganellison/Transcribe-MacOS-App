@@ -277,8 +277,9 @@ actor DiarizationMerger {
         guard !speakers.isEmpty else { return fallback ?? "Speaker 1" }
         let midpoint = (word.start + word.end) / 2.0
 
-        // Containment (half-open [start, end) so a midpoint on a boundary goes to the earlier block).
-        if let containing = speakers.first(where: { midpoint >= $0.start && midpoint < $0.end }) {
+        // Containment (half-open (start, end] so a midpoint on a boundary goes to the EARLIER block,
+        // whose interval ends there — not the later block whose interval starts there).
+        if let containing = speakers.first(where: { midpoint > $0.start && midpoint <= $0.end }) {
             return containing.speakerLabel
         }
         // Greatest temporal overlap with the word's span.
