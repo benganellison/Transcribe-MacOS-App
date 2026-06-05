@@ -311,8 +311,7 @@ struct RecordingLibraryView: View {
             }
 
             Button(localized("transcribe")) {
-                appState.openFileForTranscription(memo.fileURL)
-                appState.showRecordingLibrary = false
+                transcribe(memo: memo)
             }
 
             Button(localized("Save to Library")) {
@@ -323,6 +322,9 @@ struct RecordingLibraryView: View {
                     )
                 }
             }
+        }
+        .onTapGesture(count: 2) {
+            transcribe(memo: memo)
         }
     }
 
@@ -376,6 +378,11 @@ struct RecordingLibraryView: View {
             recording.audioURL(in: recordingLibrary.libraryURL),
             recordingID: recording.id
         )
+        appState.showRecordingLibrary = false
+    }
+
+    private func transcribe(memo: VoiceMemoRecording) {
+        appState.openFileForTranscription(memo.fileURL)
         appState.showRecordingLibrary = false
     }
 

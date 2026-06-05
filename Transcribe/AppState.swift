@@ -9,6 +9,7 @@ class AppState: ObservableObject {
     @Published var currentRecordingID: UUID?
     
     func openFileForTranscription(_ url: URL) {
+        currentRecordingID = nil
         currentTranscriptionURL = url
         showTranscriptionView = true
     }
