@@ -127,6 +127,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             )
             preferencesWindow?.title = "Preferences"
             preferencesWindow?.center()
+            // Reused window — don't let it release itself on close (see showAboutWindow).
+            preferencesWindow?.isReleasedWhenClosed = false
             
             guard let manager = settingsManager else {
                 return
@@ -150,6 +152,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             )
             aboutWindow?.title = "About Transcribe"
             aboutWindow?.center()
+            // We hold our own reference and reuse this window, so it must NOT release
+            // itself on close (the default), which would leave aboutWindow dangling
+            // and prevent reopening.
+            aboutWindow?.isReleasedWhenClosed = false
             aboutWindow?.contentView = NSHostingView(rootView: AboutView())
         }
         aboutWindow?.makeKeyAndOrderFront(nil)
