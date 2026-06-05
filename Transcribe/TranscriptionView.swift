@@ -460,6 +460,14 @@ struct TranscriptionView: View {
         .padding(.bottom, 16)
     }
     
+    /// Plain transcript with each segment prefixed by its start time, e.g.
+    /// "[00:03] Hello everyone". Used when the Show Timestamps toggle is on.
+    private var timestampedTranscript: String {
+        viewModel.segments
+            .map { "[\(formatTime($0.start))] \($0.text.trimmingCharacters(in: .whitespaces))" }
+            .joined(separator: "\n")
+    }
+
     private var transcriptionContent: some View {
         Group {
             if !viewModel.transcribedText.isEmpty {
@@ -467,7 +475,14 @@ struct TranscriptionView: View {
                     if !viewModel.diarizedUtterances.isEmpty && displayMode != .segments {
                         diarizedTranscriptView
                     } else {
-                        let displayText = displayMode == .segments ? formatAsSegments(viewModel.transcribedText) : viewModel.transcribedText
+                        let displayText: String
+                        if showTimestamps && !viewModel.segments.isEmpty {
+                            displayText = timestampedTranscript
+                        } else if displayMode == .segments {
+                            displayText = formatAsSegments(viewModel.transcribedText)
+                        } else {
+                            displayText = viewModel.transcribedText
+                        }
 
                         AutoScrollingTextView(
                             text: displayText,
@@ -494,16 +509,24 @@ struct TranscriptionView: View {
             VStack(alignment: .leading, spacing: 14) {
                 ForEach(viewModel.diarizedUtterances) { utterance in
                     VStack(alignment: .leading, spacing: 3) {
-                        Button {
-                            renamingSpeakerID = utterance.speakerID
-                            renameFieldText = speakerNames[utterance.speakerID] ?? utterance.displayName
-                        } label: {
-                            Text(speakerNames[utterance.speakerID] ?? utterance.displayName)
-                                .font(.system(size: max(11, fontSize - 2), weight: .semibold))
-                                .foregroundColor(.primaryAccent)
+                        HStack(spacing: 6) {
+                            Button {
+                                renamingSpeakerID = utterance.speakerID
+                                renameFieldText = speakerNames[utterance.speakerID] ?? utterance.displayName
+                            } label: {
+                                Text(speakerNames[utterance.speakerID] ?? utterance.displayName)
+                                    .font(.system(size: max(11, fontSize - 2), weight: .semibold))
+                                    .foregroundColor(.primaryAccent)
+                            }
+                            .buttonStyle(.plain)
+                            .help(localized("rename_speaker_title"))
+
+                            if showTimestamps {
+                                Text("[\(formatTime(utterance.startTime))]")
+                                    .font(.system(size: max(10, fontSize - 4)))
+                                    .foregroundColor(.textTertiary)
+                            }
                         }
-                        .buttonStyle(.plain)
-                        .help(localized("rename_speaker_title"))
 
                         Text(utterance.text)
                             .font(.system(size: fontSize))
