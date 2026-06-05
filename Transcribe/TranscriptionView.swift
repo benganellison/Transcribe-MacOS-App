@@ -23,6 +23,7 @@ struct TranscriptionView: View {
     @StateObject private var viewModel: TranscriptionViewModel
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var settingsManager: SettingsManager
+    @EnvironmentObject var recordingLibrary: RecordingLibraryManager
     @ObservedObject private var modelManager = ModelManager.shared
     @State private var showingExportPopover = false
     @State private var displayMode: DisplayMode = .transcript
@@ -107,6 +108,18 @@ struct TranscriptionView: View {
             // Pre-fetch Ollama models so the LLM dropdown has data
             Task {
                 await settingsManager.checkOllamaConnection()
+            }
+        }
+        .onChange(of: viewModel.isTranscribing) { wasTranscribing, isNowTranscribing in
+            // Save transcription back to recording metadata when complete
+            if wasTranscribing && !isNowTranscribing && !viewModel.transcribedText.isEmpty {
+                if let recordingID = appState.currentRecordingID {
+                    recordingLibrary.updateTranscription(
+                        recordingID: recordingID,
+                        text: viewModel.transcribedText,
+                        model: UserDefaults.standard.string(forKey: "selectedTranscriptionModel") ?? ""
+                    )
+                }
             }
         }
     }

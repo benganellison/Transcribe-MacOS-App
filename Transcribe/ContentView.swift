@@ -22,6 +22,8 @@ struct ContentView: View {
                 RecordingView()
             } else if appState.showSystemAudioView {
                 SystemAudioRecordingView()
+            } else if appState.showRecordingLibrary {
+                RecordingLibraryView()
             } else if appState.showTranscriptionView, let url = appState.currentTranscriptionURL {
                 TranscriptionView(fileURL: url)
             } else {
@@ -191,6 +193,12 @@ struct ContentView: View {
                 icon: "speaker.wave.3.fill",
                 title: localized("system_audio"),
                 action: { appState.showSystemAudioView = true }
+            )
+            
+            FeatureCard(
+                icon: "waveform.circle.fill",
+                title: localized("my_recordings"),
+                action: { appState.showRecordingLibrary = true }
             )
             
             FeatureCard(
