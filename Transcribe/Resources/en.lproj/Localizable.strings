@@ -229,4 +229,34 @@
 
 /* Theme */
 "switch_to_light" = "Switch to Light Mode";
+
+/* Recording Library */
+"my_recordings" = "My Recordings";
+"My Recordings" = "My Recordings";
+"Saved Recordings" = "Saved Recordings";
+"Voice Memos" = "Voice Memos";
+"No saved recordings yet." = "No saved recordings yet. Use Recording or System Audio to create your first recording.";
+"No Voice Memos found in the selected folder." = "No Voice Memos found in the selected folder.";
+"Connect your Voice Memos Recordings folder to browse and import Voice Memos here." = "Connect your Voice Memos Recordings folder to browse and import Voice Memos here.";
+"Connect Voice Memos" = "Connect Voice Memos";
+"Change Folder" = "Change Folder";
+"Save to Library" = "Save to Library";
+"Recording Name" = "Recording Name";
+"Rename" = "Rename";
+"Edit Details" = "Edit Details";
+"Show in Finder" = "Show in Finder";
+"Delete" = "Delete";
+"Delete Recording" = "Delete Recording";
+"Are you sure you want to delete %@?" = "Are you sure you want to delete \"%@\"? This cannot be undone.";
+"Stop" = "Stop";
+"OK" = "OK";
+"Import Failed" = "Import Failed";
+"The Voice Memo could not be saved to your library." = "The Voice Memo could not be saved to your library.";
+"Rename Failed" = "Rename Failed";
+"The recording could not be renamed. Please try again." = "The recording could not be renamed. Please try again.";
+"Select your Voice Memos Recordings folder" = "Select your Voice Memos Recordings folder";
+"Playback Unavailable" = "Playback Unavailable";
+"The selected audio file could not be found." = "The selected audio file could not be found.";
+"Location" = "Location";
+"Comment" = "Comment";
 "switch_to_dark" = "Switch to Dark Mode";

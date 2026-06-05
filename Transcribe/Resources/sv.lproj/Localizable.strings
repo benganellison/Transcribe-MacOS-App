@@ -230,3 +230,33 @@
 /* Theme */
 "switch_to_light" = "Byt till ljust läge";
 "switch_to_dark" = "Byt till mörkt läge";
+
+/* Recording Library */
+"my_recordings" = "Mina inspelningar";
+"My Recordings" = "Mina inspelningar";
+"Saved Recordings" = "Sparade inspelningar";
+"Voice Memos" = "Röstmemon";
+"No saved recordings yet." = "Inga inspelningar ännu. Använd Inspelning eller Systemljud för att skapa din första inspelning.";
+"No Voice Memos found in the selected folder." = "Inga röstmemon hittades i den valda mappen.";
+"Connect your Voice Memos Recordings folder to browse and import Voice Memos here." = "Anslut din Röstmemon-mapp för att bläddra bland och importera röstmemon här.";
+"Connect Voice Memos" = "Anslut Röstmemon";
+"Change Folder" = "Byt mapp";
+"Save to Library" = "Spara till bibliotek";
+"Recording Name" = "Inspelningsnamn";
+"Rename" = "Byt namn";
+"Edit Details" = "Redigera detaljer";
+"Show in Finder" = "Visa i Finder";
+"Delete" = "Radera";
+"Delete Recording" = "Radera inspelning";
+"Are you sure you want to delete %@?" = "Är du säker på att du vill radera \"%@\"? Detta kan inte ångras.";
+"Stop" = "Stopp";
+"OK" = "OK";
+"Import Failed" = "Import misslyckades";
+"The Voice Memo could not be saved to your library." = "Röstmemot kunde inte sparas till ditt bibliotek.";
+"Rename Failed" = "Namnbyte misslyckades";
+"The recording could not be renamed. Please try again." = "Inspelningen kunde inte döpas om. Försök igen.";
+"Select your Voice Memos Recordings folder" = "Välj din Röstmemon-mapp";
+"Playback Unavailable" = "Uppspelning ej tillgänglig";
+"The selected audio file could not be found." = "Den valda ljudfilen kunde inte hittas.";
+"Location" = "Plats";
+"Comment" = "Kommentar";
