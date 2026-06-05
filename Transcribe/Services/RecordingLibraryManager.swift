@@ -216,12 +216,27 @@ class RecordingLibraryManager: ObservableObject {
         return try? decoder.decode(VoiceMemoTranscription.self, from: data)
     }
 
-    /// Persists a voice memo's transcription so reopening it doesn't re-transcribe.
-    func cacheVoiceMemoTranscription(id: String, text: String, segments: [TranscriptionSegmentData], model: String) {
+    /// Persists a voice memo's transcription (and any diarization) so reopening it
+    /// doesn't re-transcribe. Writes the full current state each call.
+    func cacheVoiceMemoTranscription(
+        id: String,
+        text: String,
+        segments: [TranscriptionSegmentData],
+        model: String,
+        diarizedUtterances: [DiarizedUtterance]? = nil,
+        speakerNames: [String: String]? = nil
+    ) {
         let dir = voiceMemoTranscriptionsDirectory()
         try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
 
-        let payload = VoiceMemoTranscription(text: text, segments: segments, model: model, date: Date())
+        let payload = VoiceMemoTranscription(
+            text: text,
+            segments: segments,
+            model: model,
+            date: Date(),
+            diarizedUtterances: diarizedUtterances,
+            speakerNames: speakerNames
+        )
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]

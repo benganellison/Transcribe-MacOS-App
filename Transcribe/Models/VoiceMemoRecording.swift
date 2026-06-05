@@ -25,4 +25,8 @@ struct VoiceMemoTranscription: Codable {
     var segments: [TranscriptionSegmentData]
     var model: String
     var date: Date
+    /// Diarization results, persisted alongside the transcription. Optional so
+    /// older cache files (text-only) still decode.
+    var diarizedUtterances: [DiarizedUtterance]?
+    var speakerNames: [String: String]?
 }

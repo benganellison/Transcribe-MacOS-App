@@ -79,7 +79,10 @@ struct TranscriptionView: View {
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 Button(action: {
-                    if !viewModel.transcribedText.isEmpty && !viewModel.isTranscribing {
+                    // Library recordings and voice memos auto-save (text + segments +
+                    // diarization), so only warn for ad-hoc files with no save target.
+                    let isPersisted = appState.currentRecordingID != nil || appState.currentVoiceMemoID != nil
+                    if !viewModel.transcribedText.isEmpty && !viewModel.isTranscribing && !isPersisted {
                         showUnsavedChangesAlert = true
                     } else {
                         appState.showTranscriptionView = false
@@ -152,13 +155,25 @@ struct TranscriptionView: View {
 
     /// Persists the current diarization + speaker-name overrides to the open recording, if any.
     private func persistDiarizationIfPossible() {
-        guard let recordingID = appState.currentRecordingID,
-              !viewModel.diarizedUtterances.isEmpty else { return }
-        recordingLibrary.updateDiarization(
-            recordingID: recordingID,
-            utterances: viewModel.diarizedUtterances,
-            speakerNames: speakerNames
-        )
+        guard !viewModel.diarizedUtterances.isEmpty else { return }
+        if let recordingID = appState.currentRecordingID {
+            recordingLibrary.updateDiarization(
+                recordingID: recordingID,
+                utterances: viewModel.diarizedUtterances,
+                speakerNames: speakerNames
+            )
+        } else if let memoID = appState.currentVoiceMemoID {
+            // Voice memos: re-write the sidecar with full current state (diarization
+            // included), preserving the cached transcription text + segments.
+            recordingLibrary.cacheVoiceMemoTranscription(
+                id: memoID,
+                text: viewModel.transcribedText,
+                segments: viewModel.segments,
+                model: UserDefaults.standard.string(forKey: "selectedTranscriptionModel") ?? "",
+                diarizedUtterances: viewModel.diarizedUtterances,
+                speakerNames: speakerNames
+            )
+        }
     }
 
     /// Runs the LLM auto-naming pass and applies confident names as overrides.
@@ -193,14 +208,24 @@ struct TranscriptionView: View {
         if let recordingID = appState.currentRecordingID,
            let saved = recordingLibrary.recording(id: recordingID),
            let text = saved.transcription, !text.isEmpty {
-            viewModel.loadPersisted(text: text, segments: saved.transcriptionSegments ?? [])
+            viewModel.loadPersisted(
+                text: text,
+                segments: saved.transcriptionSegments ?? [],
+                diarized: saved.diarizedUtterances ?? []
+            )
+            speakerNames = saved.speakerNames ?? [:]
             return
         }
 
         if let memoID = appState.currentVoiceMemoID,
            let cached = recordingLibrary.cachedVoiceMemoTranscription(id: memoID),
            !cached.text.isEmpty {
-            viewModel.loadPersisted(text: cached.text, segments: cached.segments)
+            viewModel.loadPersisted(
+                text: cached.text,
+                segments: cached.segments,
+                diarized: cached.diarizedUtterances ?? []
+            )
+            speakerNames = cached.speakerNames ?? [:]
             return
         }
 
@@ -1615,9 +1640,14 @@ class TranscriptionViewModel: ObservableObject {
     /// Seeds the view with a previously saved transcription instead of running the
     /// engine, so reopening a recording is instant and diarization can re-run from
     /// the cached segments/word timings.
-    func loadPersisted(text: String, segments: [TranscriptionSegmentData]) {
+    func loadPersisted(
+        text: String,
+        segments: [TranscriptionSegmentData],
+        diarized: [DiarizedUtterance] = []
+    ) {
         transcribedText = text
         self.segments = segments
+        diarizedUtterances = diarized
         wordCount = text.split(separator: " ").count
         progress = 1.0
         isTranscribing = false
