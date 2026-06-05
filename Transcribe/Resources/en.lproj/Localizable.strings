@@ -269,3 +269,10 @@
 "rename_speaker_title" = "Rename speaker";
 "speaker_name_placeholder" = "Name";
 "identifying_speakers" = "Identifying speakers…";
+"rerun_diarization_button" = "Re-run";
+"expected_speakers_label" = "Expected speakers";
+"expected_speakers_placeholder" = "Auto";
+"expected_speakers_help" = "Optional. If you know how many people spoke (e.g. 10), enter it — this greatly helps when some speakers only talk briefly.";
+"diarization_sensitivity_label" = "Sensitivity";
+"more_speakers" = "More speakers";
+"fewer_speakers" = "Fewer speakers";

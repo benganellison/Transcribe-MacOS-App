@@ -45,6 +45,9 @@ struct TranscriptionView: View {
     @State private var renamingSpeakerID: String? = nil
     @State private var renameFieldText: String = ""
     @State private var isAutoNaming = false
+    @State private var showDiarizationPopover = false
+    @State private var expectedSpeakersText: String = ""
+    @State private var diarizationThreshold: Double = DiarizationService.Options.default.clusteringThreshold
 
     enum DisplayMode {
         case transcript
@@ -196,15 +199,108 @@ struct TranscriptionView: View {
                 .foregroundColor(.textPrimary)
             
             Spacer()
-            
+
             if viewModel.isTranscribing {
                 AccentSpinner(size: 16, lineWidth: 2)
             }
-            
+
+            if !viewModel.transcribedText.isEmpty && !viewModel.isTranscribing {
+                diarizationMenuButton
+            }
+
             transcriptionStats
         }
         .padding()
         .background(Color.surfaceBackground)
+    }
+
+    /// Always-visible entry point for running / re-running speaker identification,
+    /// with an optional expected-speaker count and sensitivity. Placing it in the
+    /// header makes post-processing discoverable even when "Identify speakers" was
+    /// off during the original transcription.
+    private var diarizationMenuButton: some View {
+        Button(action: { showDiarizationPopover.toggle() }) {
+            HStack(spacing: 6) {
+                if viewModel.isDiarizing {
+                    AccentSpinner(size: 12, lineWidth: 2)
+                } else {
+                    Image(systemName: "person.2.wave.2.fill")
+                }
+                Text(viewModel.diarizedUtterances.isEmpty
+                     ? localized("identify_speakers_button")
+                     : localized("rerun_diarization_button"))
+            }
+            .font(.system(size: 12, weight: .medium))
+            .foregroundColor(.primaryAccent)
+        }
+        .buttonStyle(.plain)
+        .disabled(viewModel.isDiarizing)
+        .popover(isPresented: $showDiarizationPopover, arrowEdge: .bottom) {
+            diarizationOptionsPopover
+        }
+    }
+
+    private var diarizationOptionsPopover: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(localized("identify_speakers_button"))
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.textPrimary)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(localized("expected_speakers_label"))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.textSecondary)
+                TextField(localized("expected_speakers_placeholder"), text: $expectedSpeakersText)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 120)
+                Text(localized("expected_speakers_help"))
+                    .font(.system(size: 11))
+                    .foregroundColor(.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(localized("diarization_sensitivity_label"))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.textSecondary)
+                Slider(value: $diarizationThreshold, in: 0.4...0.9)
+                    .tint(.primaryAccent)
+                HStack {
+                    Text(localized("more_speakers"))
+                    Spacer()
+                    Text(localized("fewer_speakers"))
+                }
+                .font(.system(size: 10))
+                .foregroundColor(.textTertiary)
+            }
+
+            Button(action: { runDiarization() }) {
+                Text(viewModel.diarizedUtterances.isEmpty
+                     ? localized("identify_speakers_button")
+                     : localized("rerun_diarization_button"))
+                    .font(.system(size: 12, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .foregroundColor(.white)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.primaryAccent))
+            }
+            .buttonStyle(.plain)
+            .disabled(viewModel.isDiarizing)
+        }
+        .padding(20)
+        .frame(width: 280)
+    }
+
+    /// Reads the popover inputs and kicks off a diarization pass (without re-transcribing).
+    private func runDiarization() {
+        let count = Int(expectedSpeakersText.trimmingCharacters(in: .whitespaces))
+        let options = DiarizationService.Options(
+            expectedSpeakers: count,
+            clusteringThreshold: diarizationThreshold,
+            minSegmentDuration: DiarizationService.Options.default.minSegmentDuration
+        )
+        showDiarizationPopover = false
+        Task { await viewModel.diarize(options: options) }
     }
     
     private var transcriptionStats: some View {
@@ -379,16 +475,8 @@ struct TranscriptionView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
         } else if viewModel.diarizedUtterances.isEmpty {
-            if !viewModel.isTranscribing {
-                Button(action: { Task { await viewModel.diarize() } }) {
-                    Label(localized("identify_speakers_button"), systemImage: "person.2.wave.2")
-                        .font(.system(size: 12, weight: .medium))
-                }
-                .buttonStyle(.plain)
-                .foregroundColor(.primaryAccent)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-            }
+            // On-demand trigger lives in the header (diarizationMenuButton); nothing here.
+            EmptyView()
         } else {
             Button(action: { autoNameSpeakers() }) {
                 HStack(spacing: 6) {
@@ -1818,7 +1906,11 @@ class TranscriptionViewModel: ObservableObject {
     /// Uses word timestamps when available; otherwise falls back to segment-level timing.
     /// Diarization is additive — failures surface in `diarizationError` and never
     /// affect the plain transcript.
-    func diarize(audioURL: URL? = nil, segments providedSegments: [TranscriptionSegmentData]? = nil) async {
+    func diarize(
+        audioURL: URL? = nil,
+        segments providedSegments: [TranscriptionSegmentData]? = nil,
+        options: DiarizationService.Options = .default
+    ) async {
         let url = audioURL ?? fileURL
         let segs = providedSegments ?? self.segments
         guard !segs.isEmpty else { return }
@@ -1846,7 +1938,7 @@ class TranscriptionViewModel: ObservableObject {
         }.filter { !$0.text.isEmpty }
 
         do {
-            let speakers = try await diarizationService.diarize(fileURL: url)
+            let speakers = try await diarizationService.diarize(fileURL: url, options: options)
             let utterances = await diarizationMerger.merge(words: words, speakers: speakers)
             self.diarizedUtterances = utterances
         } catch {

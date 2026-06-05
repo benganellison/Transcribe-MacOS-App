@@ -269,3 +269,10 @@
 "rename_speaker_title" = "Byt namn på talare";
 "speaker_name_placeholder" = "Namn";
 "identifying_speakers" = "Identifierar talare…";
+"rerun_diarization_button" = "Kör igen";
+"expected_speakers_label" = "Förväntat antal talare";
+"expected_speakers_placeholder" = "Auto";
+"expected_speakers_help" = "Valfritt. Om du vet hur många som talade (t.ex. 10), ange det — det hjälper mycket när vissa bara talar kort.";
+"diarization_sensitivity_label" = "Känslighet";
+"more_speakers" = "Fler talare";
+"fewer_speakers" = "Färre talare";

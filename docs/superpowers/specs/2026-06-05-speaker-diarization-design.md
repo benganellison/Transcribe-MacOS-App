@@ -159,6 +159,26 @@ Add `FluidAudio` (from `0.12.4`) to `Package.swift` and the `Transcribe` target:
 
 Min macOS 14+ (project targets macOS 26 — well within range). Swift 6.2.
 
+## Addendum (2026-06-05): accuracy tuning
+
+Field testing on a 10-speaker meeting (most speakers only self-introduced, then
+listened) surfaced the expected weakness of clustering-based diarization: brief,
+imbalanced speakers get merged or dropped. Two real FluidAudio knobs address this,
+so the design now exposes light tuning instead of auto-only:
+
+- **`Embedding.minSegmentDurationSeconds`** — FluidAudio default 1.0s drops
+  sub-second turns (short intros). We default to **0.45s**.
+- **`Clustering.numSpeakers`** — an optional **expected speaker count** set by the
+  user forces the clustering target, the strongest lever for brief speakers.
+- **`Clustering.threshold`** — a sensitivity slider (0.4–0.9; lower = more
+  speakers) exposed for fine-tuning.
+
+These live in `DiarizationService.Options`. The transcript header gains an
+always-visible **Identify speakers / Re-run** control (popover with the count
+field + sensitivity slider) so post-processing is discoverable and can be re-run
+without re-transcribing. This supersedes the original "auto-detect only, no UI
+input" and "known count out of scope" decisions.
+
 ## Out of scope (YAGNI)
 
 - Streaming / real-time diarization (offline pass is simpler and more accurate).
