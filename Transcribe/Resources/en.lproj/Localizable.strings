@@ -260,3 +260,12 @@
 "Location" = "Location";
 "Comment" = "Comment";
 "switch_to_dark" = "Switch to Dark Mode";
+
+/* Diarization */
+"identify_speakers_toggle" = "Identify speakers";
+"identify_speakers_help" = "Detects who spoke when and labels the transcript. Adds an extra processing pass.";
+"identify_speakers_button" = "Identify speakers";
+"auto_name_speakers_button" = "Auto-name with AI";
+"rename_speaker_title" = "Rename speaker";
+"speaker_name_placeholder" = "Name";
+"identifying_speakers" = "Identifying speakers…";

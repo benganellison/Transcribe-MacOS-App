@@ -260,3 +260,12 @@
 "The selected audio file could not be found." = "Den valda ljudfilen kunde inte hittas.";
 "Location" = "Plats";
 "Comment" = "Kommentar";
+
+/* Diarization */
+"identify_speakers_toggle" = "Identifiera talare";
+"identify_speakers_help" = "Upptäcker vem som talade när och märker transkriptionen. Lägger till ett extra bearbetningssteg.";
+"identify_speakers_button" = "Identifiera talare";
+"auto_name_speakers_button" = "Namnge automatiskt med AI";
+"rename_speaker_title" = "Byt namn på talare";
+"speaker_name_placeholder" = "Namn";
+"identifying_speakers" = "Identifierar talare…";
