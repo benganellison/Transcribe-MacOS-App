@@ -134,6 +134,7 @@
 				40DACE492E75861E00E0B532 /* Sources */,
 				40DACE4A2E75861E00E0B532 /* Frameworks */,
 				40DACE4B2E75861E00E0B532 /* Resources */,
+				FA1D0A0D00000000000000C1 /* Stamp Git Commit */,
 			);
 			buildRules = (
 			);
@@ -274,6 +275,28 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		FA1D0A0D00000000000000C1 /* Stamp Git Commit */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Stamp Git Commit";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "GIT_HASH=$(git -C \"$SRCROOT\" rev-parse --short HEAD 2>/dev/null || echo unknown)\nif ! git -C \"$SRCROOT\" diff --quiet 2>/dev/null; then GIT_HASH=\"$GIT_HASH-dirty\"; fi\nPLIST=\"$TARGET_BUILD_DIR/$INFOPLIST_PATH\"\nif [ -f \"$PLIST\" ]; then\n  /usr/libexec/PlistBuddy -c \"Set :GitCommit $GIT_HASH\" \"$PLIST\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :GitCommit string $GIT_HASH\" \"$PLIST\" 2>/dev/null || true\nfi\nexit 0\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		40DACE492E75861E00E0B532 /* Sources */ = {

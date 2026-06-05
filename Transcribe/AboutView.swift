@@ -8,7 +8,13 @@ struct AboutView: View {
     var buildNumber: String {
         Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
     }
-    
+
+    /// Git commit the running binary was built from, injected by the
+    /// "Stamp Git Commit" build phase. Lets you confirm you're on the latest build.
+    var gitCommit: String {
+        Bundle.main.infoDictionary?["GitCommit"] as? String ?? "unknown"
+    }
+
     var body: some View {
         VStack(spacing: 20) {
             Image(systemName: "waveform.circle.fill")
@@ -22,7 +28,12 @@ struct AboutView: View {
             Text("Version \(appVersion) (\(buildNumber))")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
-            
+
+            Text("Build \(gitCommit)")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .textSelection(.enabled)
+
             Text("Advanced audio transcription for macOS")
                 .font(.body)
             
