@@ -264,7 +264,6 @@ class WhisperKitService {
                         task: .transcribe,
                         language: languageCode == "auto" ? nil : languageCode,
                         usePrefillPrompt: false,
-                        usePrefillCache: false,
                         skipSpecialTokens: true,
                         withoutTimestamps: !includeTimestamps,
                         wordTimestamps: wordTimestamps
