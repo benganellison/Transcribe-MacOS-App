@@ -139,7 +139,8 @@ struct SettingsView: View {
 struct GeneralSettingsView: View {
     @EnvironmentObject var settingsManager: SettingsManager
     @StateObject private var localizationManager = LocalizationManager.shared
-    
+    @AppStorage("identifySpeakers") private var identifySpeakers = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Header
@@ -184,9 +185,32 @@ struct GeneralSettingsView: View {
                             .foregroundColor(.textSecondary)
                     }
                 }
+
+                // Speaker identification (diarization)
+                SettingsCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Toggle(isOn: $identifySpeakers) {
+                            Label {
+                                Text(localized("identify_speakers_toggle"))
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundColor(.textPrimary)
+                            } icon: {
+                                Image(systemName: "person.2.wave.2.fill")
+                                    .font(.system(size: 18))
+                                    .foregroundStyle(LinearGradient.accentGradient)
+                            }
+                        }
+                        .toggleStyle(.switch)
+                        .tint(.primaryAccent)
+
+                        Text(localized("identify_speakers_help"))
+                            .font(.system(size: 12))
+                            .foregroundColor(.textSecondary)
+                    }
+                }
             }
             .padding(.horizontal, 40)
-            
+
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
