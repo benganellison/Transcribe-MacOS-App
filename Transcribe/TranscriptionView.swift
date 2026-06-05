@@ -468,6 +468,19 @@ struct TranscriptionView: View {
             .joined(separator: "\n")
     }
 
+    /// The text shown in the plain (non-diarized) transcript view, honoring the
+    /// Show Timestamps and Segments display options. Computed outside the view
+    /// body so the control flow isn't inside a ViewBuilder.
+    private var plainDisplayText: String {
+        if showTimestamps && !viewModel.segments.isEmpty {
+            return timestampedTranscript
+        } else if displayMode == .segments {
+            return formatAsSegments(viewModel.transcribedText)
+        } else {
+            return viewModel.transcribedText
+        }
+    }
+
     private var transcriptionContent: some View {
         Group {
             if !viewModel.transcribedText.isEmpty {
@@ -475,17 +488,8 @@ struct TranscriptionView: View {
                     if !viewModel.diarizedUtterances.isEmpty && displayMode != .segments {
                         diarizedTranscriptView
                     } else {
-                        let displayText: String
-                        if showTimestamps && !viewModel.segments.isEmpty {
-                            displayText = timestampedTranscript
-                        } else if displayMode == .segments {
-                            displayText = formatAsSegments(viewModel.transcribedText)
-                        } else {
-                            displayText = viewModel.transcribedText
-                        }
-
                         AutoScrollingTextView(
-                            text: displayText,
+                            text: plainDisplayText,
                             fontSize: fontSize,
                             isStreaming: viewModel.isTranscribing
                         )
