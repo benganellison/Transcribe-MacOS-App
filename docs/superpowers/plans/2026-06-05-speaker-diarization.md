@@ -411,13 +411,18 @@ final class DiarizationService {
         }
     }
 
-    /// Runs diarization on a 16kHz mono WAV and returns ordered speaker segments.
+    /// Runs diarization on any audio file and returns ordered speaker segments.
+    /// FluidAudio's AudioConverter resamples to 16kHz mono Float32 internally, so the
+    /// original recording URL can be passed directly (no AudioPreprocessor needed).
     func diarize(fileURL: URL) async throws -> [SpeakerSegment] {
         try await prepare()
         guard let manager else { throw DiarizationError.modelLoadFailed("manager nil") }
         do {
-            let result = try await manager.process(fileURL)
-            return relabel(result.segments)
+            let samples = try AudioConverter().resampleAudioFile(fileURL)
+            let result = try await manager.process(audio: samples)
+            return relabel(result.segments)   // relabel inferred-type segments; see implementation
+        } catch let error as DiarizationError {
+            throw error
         } catch {
             throw DiarizationError.processingFailed(error.localizedDescription)
         }
