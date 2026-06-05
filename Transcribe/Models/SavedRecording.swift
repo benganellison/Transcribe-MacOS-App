@@ -14,8 +14,8 @@ enum TranscriptionStatus: String, Codable {
 }
 
 struct SavedRecording: Identifiable, Codable, Equatable {
-    static let currentSchemaVersion = 1
-    
+    static let currentSchemaVersion = 2
+
     let schemaVersion: Int
     let id: UUID
     var filename: String
@@ -28,6 +28,11 @@ struct SavedRecording: Identifiable, Codable, Equatable {
     var transcriptionStatus: TranscriptionStatus
     var transcriptionModel: String?
     var transcribedAt: Date?
+    /// Speaker-labeled turns produced by diarization (schema v2+). Optional so v1
+    /// metadata decodes cleanly (missing key → nil).
+    var diarizedUtterances: [DiarizedUtterance]?
+    /// User/LLM speaker-name overrides keyed by speaker ID, e.g. ["Speaker 1": "Anna"].
+    var speakerNames: [String: String]?
     var source: RecordingSource
     var format: String
     var createdAt: Date
@@ -45,6 +50,8 @@ struct SavedRecording: Identifiable, Codable, Equatable {
         transcriptionStatus: TranscriptionStatus = .notStarted,
         transcriptionModel: String? = nil,
         transcribedAt: Date? = nil,
+        diarizedUtterances: [DiarizedUtterance]? = nil,
+        speakerNames: [String: String]? = nil,
         source: RecordingSource,
         format: String,
         createdAt: Date = Date(),
@@ -62,6 +69,8 @@ struct SavedRecording: Identifiable, Codable, Equatable {
         self.transcriptionStatus = transcriptionStatus
         self.transcriptionModel = transcriptionModel
         self.transcribedAt = transcribedAt
+        self.diarizedUtterances = diarizedUtterances
+        self.speakerNames = speakerNames
         self.source = source
         self.format = format
         self.createdAt = createdAt

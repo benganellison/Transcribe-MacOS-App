@@ -179,6 +179,20 @@ class RecordingLibraryManager: ObservableObject {
         savedRecordings[index] = updated
     }
 
+    func updateDiarization(recordingID: UUID, utterances: [DiarizedUtterance], speakerNames: [String: String]) {
+        guard let index = savedRecordings.firstIndex(where: { $0.id == recordingID }) else {
+            return
+        }
+
+        var updated = savedRecordings[index]
+        updated.diarizedUtterances = utterances
+        updated.speakerNames = speakerNames
+        updated.updatedAt = Date()
+
+        guard writeMetadata(updated) else { return }
+        savedRecordings[index] = updated
+    }
+
     func importVoiceMemo(memo: VoiceMemoRecording) -> SavedRecording? {
         let importsDirectory = importsDirectoryURL()
         try? fileManager.createDirectory(at: importsDirectory, withIntermediateDirectories: true)
