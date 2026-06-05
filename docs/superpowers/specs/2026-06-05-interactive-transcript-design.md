@@ -78,6 +78,10 @@ each 0.1s tick.
 - **Word timestamps always-on** — drop the `forceWordTimestamps`/`identifySpeakers`
   gating in `WhisperKitService`/`TranscriptionService`; always generate on the
   local path.
+- **Original snapshot persistence** — add `originalTranscriptionSegments:
+  [TranscriptionSegmentData]?` to `SavedRecording` (and the voice-memo sidecar
+  `VoiceMemoTranscription`). Populated lazily on first edit; cleared by
+  Re-transcribe. Optional so existing metadata decodes.
 
 ## Edit & timing reconciliation
 
@@ -96,13 +100,33 @@ After any edit, `rebuildText(from:)` regenerates `transcribedText`, and we persi
 through existing paths: `updateTranscription(…segments…)` for library recordings,
 the voice-memo sidecar, and `updateDiarization` for diarized edits.
 
-### Edit recoverability
+### Edit recoverability — original snapshot + per-element restore
 
-- The existing **Re-transcribe** button regenerates the original transcript from
-  audio — a natural "revert all edits."
-- A lightweight **one-step in-session undo** for the most recent edit.
-- Editing is therefore never destructive: worst case, Re-transcribe restores ground
-  truth.
+Editing is non-destructive: the original transcription is preserved and any word
+or sentence can be reverted individually, keyed by its position on the timeline.
+
+- **Original snapshot.** The first time a recording is edited, the current
+  (unedited) segments-with-words are captured as an immutable
+  `originalSegments` snapshot. Stored only for edited recordings (no cost
+  otherwise). Re-transcribe regenerates ground truth and clears the snapshot so the
+  next edit re-captures the fresh original.
+- **Per-element restore via timestamp.** Right-click a word or sentence → context
+  menu (items shown only when that element differs from the original):
+  - *Restore word* → finds the original word whose time range overlaps the
+    selected word's time and replaces the edited text with it.
+  - *Restore sentence* → finds the original segment(s) overlapping the selected
+    segment's `[start, end]` and restores that text + word timings.
+  - *Restore all* → swaps the working copy back to `originalSegments` wholesale
+    (instant, no re-run).
+- Because word edits keep timing and sentence rewrites keep the segment's
+  `[start, end]`, the timeline stays a reliable key into the original — so restore
+  works even after edits.
+- This applies to edits made in **both** the plain and diarized views: both restore
+  from the same `originalSegments` (the ground-truth timeline); diarized-view
+  restores look up original words by the utterance word's timestamp.
+
+The restore lookups are pure functions in `TimedTranscript`
+(`originalWord(at:)`, `originalSegment(overlapping:)`) and are unit-tested.
 
 ## Low-confidence hinting (guided editing)
 
@@ -118,6 +142,8 @@ clean.
   transcripts and inside diarized blocks; keep `AutoScrollingTextView` for
   streaming and as the no-word-timing fallback. Add an **Edit** toggle and a
   **Follow playback** toggle to the transcript header.
+- **Context menu** (`.contextMenu` on each word/segment): *Restore word*, *Restore
+  sentence*, *Restore all* — shown only when the element differs from the original.
 - Reuses `viewModel.currentTime`, `viewModel.seek(to:)`, `viewModel.segments`,
   `viewModel.diarizedUtterances`, `viewModel.playbackSpeed` — all already present.
 - **Playback speed composes unchanged**: the karaoke clock reads `currentTime`,
@@ -142,6 +168,10 @@ clean.
 - reconciliation — same-count keeps timing; different-count even-distribution sets
   `timingApproximate`; word replace keeps timing.
 - `rebuildText(from:)` — round-trip text from segments after edits.
+- restore — `originalWord(at:)` finds the right original word for a time;
+  `originalSegment(overlapping:)` finds the right original segment; restore on an
+  unedited element is a no-op; restore after a sentence rewrite (different word
+  count) returns the original words/timings.
 
 `FlowLayout`, `WordFlowView`, and integration get manual smoke tests (build is
 Mac-only). Verify: `xcodebuild build -scheme Transcribe CLANG_COVERAGE_MAPPING=NO`.
