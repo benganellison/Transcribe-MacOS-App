@@ -203,7 +203,7 @@ class WhisperKitService {
         currentModelId = nil
     }
     
-    func transcribe(fileURL: URL, modelId: String, language: String?) -> AsyncThrowingStream<TranscriptionUpdate, Error> {
+    func transcribe(fileURL: URL, modelId: String, language: String?, forceWordTimestamps: Bool = false) -> AsyncThrowingStream<TranscriptionUpdate, Error> {
         AsyncThrowingStream { continuation in
             Task { @MainActor in
                 do {
@@ -257,7 +257,8 @@ class WhisperKitService {
                     
                     // Get timestamp settings from UserDefaults
                     let includeTimestamps = UserDefaults.standard.bool(forKey: "includeTimestamps")
-                    let wordTimestamps = UserDefaults.standard.bool(forKey: "wordTimestamps")
+                    // Word timestamps are required for diarization's word-level merge.
+                    let wordTimestamps = UserDefaults.standard.bool(forKey: "wordTimestamps") || forceWordTimestamps
                     
                     // Create decoding options
                     let decodeOptions = DecodingOptions(
@@ -296,7 +297,14 @@ class WhisperKitService {
                                 start: Double(segment.start),
                                 end: Double(segment.end),
                                 text: segment.text,
-                                words: nil
+                                words: segment.words?.map { wt in
+                                    WordTimestamp(
+                                        word: wt.word,
+                                        start: Double(wt.start),
+                                        end: Double(wt.end),
+                                        confidence: wt.probability
+                                    )
+                                }
                             )
                         }
                         
