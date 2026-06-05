@@ -15,7 +15,7 @@ class TranscriptionService {
     private let languageManager = LanguageManager.shared
     private var whisperKitService: WhisperKitService?
     
-    func transcribe(fileURL: URL) -> AsyncThrowingStream<TranscriptionUpdate, Error> {
+    func transcribe(fileURL: URL, forceWordTimestamps: Bool = false) -> AsyncThrowingStream<TranscriptionUpdate, Error> {
         AsyncThrowingStream { continuation in
             Task {
                 do {
@@ -24,13 +24,14 @@ class TranscriptionService {
                           !selectedModel.isEmpty else {
                         throw TranscriptionError.noModelSelected
                     }
-                    
+
                     if selectedModel.starts(with: "kb_whisper-") ||  // KB CoreML models
                        selectedModel.starts(with: "openai_whisper-") {
                         // Use WhisperKit for standard Whisper models and KB CoreML models
                         try await transcribeWithWhisperKit(
                             fileURL: fileURL,
                             modelId: selectedModel,
+                            forceWordTimestamps: forceWordTimestamps,
                             continuation: continuation
                         )
                     } else if selectedModel.starts(with: "cloud-") {
@@ -53,6 +54,7 @@ class TranscriptionService {
     private func transcribeWithWhisperKit(
         fileURL: URL,
         modelId: String,
+        forceWordTimestamps: Bool = false,
         continuation: AsyncThrowingStream<TranscriptionUpdate, Error>.Continuation
     ) async throws {
         // Initialize WhisperKit service if needed
@@ -92,7 +94,7 @@ class TranscriptionService {
         let selectedLanguage = languageManager.selectedLanguage.code
         
         // Stream transcription updates with model and language
-        for try await update in service.transcribe(fileURL: audioURL, modelId: modelId, language: selectedLanguage) {
+        for try await update in service.transcribe(fileURL: audioURL, modelId: modelId, language: selectedLanguage, forceWordTimestamps: forceWordTimestamps) {
             continuation.yield(update)
             
             if update.isComplete {

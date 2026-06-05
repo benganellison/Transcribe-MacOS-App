@@ -1274,6 +1274,14 @@ class TranscriptionViewModel: ObservableObject {
         }
     }
     @Published var segments: [TranscriptionSegmentData] = []
+
+    // MARK: - Diarization
+    @Published var diarizedUtterances: [DiarizedUtterance] = []
+    @Published var isDiarizing = false
+    @Published var diarizationError: String?
+    private let diarizationService = DiarizationService()
+    private let diarizationMerger = DiarizationMerger()
+
     @Published var elapsedTime: Double = 0
     @Published var estimatedTimeRemaining: Double = 0
     @Published var errorMessage: String?
@@ -1337,6 +1345,8 @@ class TranscriptionViewModel: ObservableObject {
         wordCount = 0
         progress = 0
         segments = []
+        diarizedUtterances = []
+        diarizationError = nil
         errorMessage = nil
         statusMessage = ""
         transcriptionTime = 0
@@ -1388,8 +1398,10 @@ class TranscriptionViewModel: ObservableObject {
         
         Task {
             do {
-                // Stream transcription updates
-                for try await update in transcriptionService!.transcribe(fileURL: fileURL) {
+                // Stream transcription updates. Force word timestamps when the user
+                // opted into speaker identification — the merge needs word-level timing.
+                let needWords = UserDefaults.standard.bool(forKey: "identifySpeakers")
+                for try await update in transcriptionService!.transcribe(fileURL: fileURL, forceWordTimestamps: needWords) {
                     await MainActor.run {
                         if update.progress < 0.15 && !update.isComplete {
                             // Low-progress updates are status messages (model loading, init, etc.)
@@ -1646,8 +1658,53 @@ class TranscriptionViewModel: ObservableObject {
         self.singleFileProgress = 0
         self.isProcessingChunks = false
         self.statusMessage = ""
+
+        // Auto-run diarization when the user opted in via Settings.
+        if UserDefaults.standard.bool(forKey: "identifySpeakers") {
+            Task { await self.diarize() }
+        }
     }
-    
+
+    /// Runs diarization for the transcribed file and builds speaker utterances.
+    /// Uses word timestamps when available; otherwise falls back to segment-level timing.
+    /// Diarization is additive — failures surface in `diarizationError` and never
+    /// affect the plain transcript.
+    func diarize(audioURL: URL? = nil, segments providedSegments: [TranscriptionSegmentData]? = nil) async {
+        let url = audioURL ?? fileURL
+        let segs = providedSegments ?? self.segments
+        guard !segs.isEmpty else { return }
+
+        isDiarizing = true
+        diarizationError = nil
+        defer { isDiarizing = false }
+
+        // Flatten to words; fall back to segment-level pseudo-words when word timings are absent.
+        let words: [DiarizationMerger.Word] = segs.flatMap { seg -> [DiarizationMerger.Word] in
+            if let ws = seg.words, !ws.isEmpty {
+                return ws.map {
+                    DiarizationMerger.Word(
+                        text: $0.word.trimmingCharacters(in: .whitespaces),
+                        start: $0.start,
+                        end: $0.end
+                    )
+                }
+            }
+            return [DiarizationMerger.Word(
+                text: seg.text.trimmingCharacters(in: .whitespaces),
+                start: seg.start,
+                end: seg.end
+            )]
+        }.filter { !$0.text.isEmpty }
+
+        do {
+            let speakers = try await diarizationService.diarize(fileURL: url)
+            let utterances = await diarizationMerger.merge(words: words, speakers: speakers)
+            self.diarizedUtterances = utterances
+        } catch {
+            self.diarizationError = error.localizedDescription
+        }
+    }
+
     private func handleTranscriptionError(_ error: Error) {
         self.isTranscribing = false
         self.errorMessage = error.localizedDescription
