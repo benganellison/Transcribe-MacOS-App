@@ -294,7 +294,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "GIT_HASH=$(git -C \"$SRCROOT\" rev-parse --short HEAD 2>/dev/null || echo nogit)\nif [ \"$GIT_HASH\" != nogit ] && ! git -C \"$SRCROOT\" diff --quiet 2>/dev/null; then GIT_HASH=\"$GIT_HASH-dirty\"; fi\nSTAMP=\"$GIT_HASH $(date '+%Y-%m-%d %H:%M')\"\nPLIST=\"$TARGET_BUILD_DIR/$INFOPLIST_PATH\"\n/usr/libexec/PlistBuddy -c \"Set :GitCommit $STAMP\" \"$PLIST\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :GitCommit string $STAMP\" \"$PLIST\" 2>/dev/null || true\nexit 0\n";
+			shellScript = "HASH=$(git -C \"$SRCROOT\" rev-parse --short HEAD 2>/dev/null || echo nogit)\nSTAMP=\"$HASH $(date '+%Y-%m-%d %H:%M')\"\nPLIST=\"$TARGET_BUILD_DIR/$INFOPLIST_PATH\"\necho \"[StampGitCommit] hash=$HASH\"\necho \"[StampGitCommit] plist=$PLIST\"\nls -l \"$PLIST\" || echo \"[StampGitCommit] plist missing at that path\"\n/usr/libexec/PlistBuddy -c \"Set :GitCommit $STAMP\" \"$PLIST\" 2>&1 || /usr/libexec/PlistBuddy -c \"Add :GitCommit string $STAMP\" \"$PLIST\" 2>&1\necho \"[StampGitCommit] done stamp=$STAMP\"\nexit 0\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
