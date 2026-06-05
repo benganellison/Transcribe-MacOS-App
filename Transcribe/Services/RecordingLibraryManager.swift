@@ -163,13 +163,19 @@ class RecordingLibraryManager: ObservableObject {
         savedRecordings[index] = updated
     }
 
-    func updateTranscription(recordingID: UUID, text: String, model: String) {
+    func updateTranscription(
+        recordingID: UUID,
+        text: String,
+        segments: [TranscriptionSegmentData]? = nil,
+        model: String
+    ) {
         guard let index = savedRecordings.firstIndex(where: { $0.id == recordingID }) else {
             return
         }
 
         var updated = savedRecordings[index]
         updated.transcription = text
+        updated.transcriptionSegments = segments
         updated.transcriptionStatus = .completed
         updated.transcriptionModel = model
         updated.transcribedAt = Date()
@@ -177,6 +183,53 @@ class RecordingLibraryManager: ObservableObject {
 
         guard writeMetadata(updated) else { return }
         savedRecordings[index] = updated
+    }
+
+    /// Looks up a saved recording by ID (e.g. to reload a cached transcription on open).
+    func recording(id: UUID) -> SavedRecording? {
+        savedRecordings.first(where: { $0.id == id })
+    }
+
+    // MARK: - Voice Memo transcription cache
+
+    /// Returns a cached transcription for a voice memo (keyed by its stable file id), if any.
+    /// Voice memos aren't library recordings, so their transcriptions live in a sidecar
+    /// cache in Application Support rather than in the library metadata.
+    func cachedVoiceMemoTranscription(id: String) -> VoiceMemoTranscription? {
+        guard let data = try? Data(contentsOf: voiceMemoTranscriptionURL(for: id)) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try? decoder.decode(VoiceMemoTranscription.self, from: data)
+    }
+
+    /// Persists a voice memo's transcription so reopening it doesn't re-transcribe.
+    func cacheVoiceMemoTranscription(id: String, text: String, segments: [TranscriptionSegmentData], model: String) {
+        let dir = voiceMemoTranscriptionsDirectory()
+        try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
+
+        let payload = VoiceMemoTranscription(text: text, segments: segments, model: model, date: Date())
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        if let data = try? encoder.encode(payload) {
+            try? data.write(to: voiceMemoTranscriptionURL(for: id), options: .atomic)
+        }
+    }
+
+    private func voiceMemoTranscriptionsDirectory() -> URL {
+        let base = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? fileManager.temporaryDirectory
+        return base
+            .appendingPathComponent("Transcribe", isDirectory: true)
+            .appendingPathComponent("VoiceMemoTranscriptions", isDirectory: true)
+    }
+
+    private func voiceMemoTranscriptionURL(for id: String) -> URL {
+        // `id` is already a filename component; sanitize path separators defensively.
+        let safe = id.replacingOccurrences(of: "/", with: "_")
+        return voiceMemoTranscriptionsDirectory()
+            .appendingPathComponent(safe)
+            .appendingPathExtension("json")
     }
 
     func importVoiceMemo(memo: VoiceMemoRecording) -> SavedRecording? {

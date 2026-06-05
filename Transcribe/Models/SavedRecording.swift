@@ -14,8 +14,8 @@ enum TranscriptionStatus: String, Codable {
 }
 
 struct SavedRecording: Identifiable, Codable, Equatable {
-    static let currentSchemaVersion = 1
-    
+    static let currentSchemaVersion = 2
+
     let schemaVersion: Int
     let id: UUID
     var filename: String
@@ -28,6 +28,9 @@ struct SavedRecording: Identifiable, Codable, Equatable {
     var transcriptionStatus: TranscriptionStatus
     var transcriptionModel: String?
     var transcribedAt: Date?
+    /// Cached transcription segments (with word timings when available) so a recording
+    /// can be reopened without re-transcribing. Optional → v1 metadata decodes cleanly.
+    var transcriptionSegments: [TranscriptionSegmentData]?
     var source: RecordingSource
     var format: String
     var createdAt: Date
@@ -45,6 +48,7 @@ struct SavedRecording: Identifiable, Codable, Equatable {
         transcriptionStatus: TranscriptionStatus = .notStarted,
         transcriptionModel: String? = nil,
         transcribedAt: Date? = nil,
+        transcriptionSegments: [TranscriptionSegmentData]? = nil,
         source: RecordingSource,
         format: String,
         createdAt: Date = Date(),
@@ -62,6 +66,7 @@ struct SavedRecording: Identifiable, Codable, Equatable {
         self.transcriptionStatus = transcriptionStatus
         self.transcriptionModel = transcriptionModel
         self.transcribedAt = transcribedAt
+        self.transcriptionSegments = transcriptionSegments
         self.source = source
         self.format = format
         self.createdAt = createdAt

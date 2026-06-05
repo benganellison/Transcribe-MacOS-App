@@ -17,3 +17,12 @@ struct VoiceMemoRecording: Identifiable {
         self.fileSize = fileSize
     }
 }
+
+/// Cached transcription for a voice memo, persisted in a sidecar store so reopening
+/// the memo doesn't re-transcribe it. Keyed by the memo's stable file id.
+struct VoiceMemoTranscription: Codable {
+    var text: String
+    var segments: [TranscriptionSegmentData]
+    var model: String
+    var date: Date
+}
