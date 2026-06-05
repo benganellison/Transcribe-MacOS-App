@@ -294,7 +294,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "HASH=$(git -C \"$SRCROOT\" rev-parse --short HEAD 2>/dev/null || echo nogit)\nSTAMP=\"$HASH $(date '+%Y-%m-%d %H:%M')\"\nPLIST=\"$TARGET_BUILD_DIR/$INFOPLIST_PATH\"\necho \"[StampGitCommit] hash=$HASH\"\necho \"[StampGitCommit] plist=$PLIST\"\nls -l \"$PLIST\" || echo \"[StampGitCommit] plist missing at that path\"\n/usr/libexec/PlistBuddy -c \"Set :GitCommit $STAMP\" \"$PLIST\" 2>&1 || /usr/libexec/PlistBuddy -c \"Add :GitCommit string $STAMP\" \"$PLIST\" 2>&1\necho \"[StampGitCommit] done stamp=$STAMP\"\nexit 0\n";
+			shellScript = "HASH=$(git -C \"$SRCROOT\" rev-parse --short HEAD 2>/dev/null || echo nogit)\nCOUNT=$(git -C \"$SRCROOT\" rev-list --count HEAD 2>/dev/null || echo 0)\nSTAMP=\"$HASH $(date '+%Y-%m-%d %H:%M')\"\nPLIST=\"$TARGET_BUILD_DIR/$INFOPLIST_PATH\"\n/usr/libexec/PlistBuddy -c \"Set :GitCommit $STAMP\" \"$PLIST\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :GitCommit string $STAMP\" \"$PLIST\" 2>/dev/null || true\n/usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $COUNT\" \"$PLIST\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :CFBundleVersion string $COUNT\" \"$PLIST\" 2>/dev/null || true\nexit 0\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
