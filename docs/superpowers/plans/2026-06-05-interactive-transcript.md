@@ -1000,7 +1000,136 @@ git commit -m "feat: original snapshot persistence + timestamp-based restore"
 
 ---
 
-## Task 11: Localization
+## Task 11: Diarized-view editing & restore
+
+**Files:**
+- Modify: `Transcribe/TranscriptionView.swift`
+
+Parallel the plain-view edit/restore for the diarized speaker-blocks view, operating
+on `diarizedUtterances[i].words` and persisting via `updateDiarization`. Restore
+looks up the original by timestamp from `originalSegments` (the ground-truth timeline),
+word by word — so it works even though utterances are speaker-grouped, not segment-aligned.
+
+- [ ] **Step 1: Add diarized edit/restore methods to the view model**
+
+In `TranscriptionViewModel`:
+```swift
+func editDiarizedWord(utteranceIndex: Int, wordIndex: Int, newText: String) {
+    guard diarizedUtterances.indices.contains(utteranceIndex),
+          var words = diarizedUtterances[utteranceIndex].words,
+          words.indices.contains(wordIndex) else { return }
+    let trimmed = newText.trimmingCharacters(in: .whitespaces)
+    guard !trimmed.isEmpty else { return }
+    captureOriginalIfNeeded()
+    words[wordIndex].word = trimmed
+    diarizedUtterances[utteranceIndex].words = words
+    diarizedUtterances[utteranceIndex].text = words.map(\.word).joined(separator: " ")
+}
+
+func editDiarizedSentence(utteranceIndex: Int, newText: String) {
+    guard diarizedUtterances.indices.contains(utteranceIndex) else { return }
+    captureOriginalIfNeeded()
+    let u = diarizedUtterances[utteranceIndex]
+    // Reuse the same reconciliation as plain segments via a temp segment.
+    let temp = TranscriptionSegmentData(start: u.startTime, end: u.endTime, text: u.text, words: u.words)
+    let reconciled = TimedTranscript.reconcileSentence(temp, newText: newText)
+    diarizedUtterances[utteranceIndex].text = reconciled.text
+    diarizedUtterances[utteranceIndex].words = reconciled.words
+}
+
+func restoreDiarizedWord(utteranceIndex: Int, wordIndex: Int) {
+    guard let original = originalSegments,
+          diarizedUtterances.indices.contains(utteranceIndex),
+          var words = diarizedUtterances[utteranceIndex].words,
+          words.indices.contains(wordIndex),
+          let originalWord = TimedTranscript.originalWord(in: original, atMidpointOf: words[wordIndex])
+    else { return }
+    words[wordIndex] = originalWord
+    diarizedUtterances[utteranceIndex].words = words
+    diarizedUtterances[utteranceIndex].text = words.map(\.word).joined(separator: " ")
+}
+
+func restoreDiarizedSentence(utteranceIndex: Int) {
+    guard let original = originalSegments,
+          diarizedUtterances.indices.contains(utteranceIndex),
+          var words = diarizedUtterances[utteranceIndex].words else { return }
+    words = words.map { TimedTranscript.originalWord(in: original, atMidpointOf: $0) ?? $0 }
+    diarizedUtterances[utteranceIndex].words = words
+    diarizedUtterances[utteranceIndex].text = words.map(\.word).joined(separator: " ")
+}
+```
+
+- [ ] **Step 2: Wire the diarized WordFlowView handlers**
+
+In `diarizedTranscriptView`, iterate with an index and pass real handlers. Change the
+`ForEach(viewModel.diarizedUtterances)` to enumerate, and the inner `WordFlowView`
+handlers (from Task 8 Step 6) to:
+```swift
+ForEach(Array(viewModel.diarizedUtterances.enumerated()), id: \.element.id) { uIndex, utterance in
+    // …existing speaker label HStack…
+    if let uWords = utterance.words, !uWords.isEmpty {
+        WordFlowView(
+            words: uWords,
+            segmentIndex: 10_000 + uIndex,
+            currentTime: viewModel.currentTime,
+            fontSize: fontSize,
+            isEditing: isEditingTranscript,
+            showConfidenceHints: isEditingTranscript || showConfidenceHints,
+            lowConfidenceThreshold: 0.5,
+            onSeek: { viewModel.seek(to: $0) },
+            onEditWord: { wIndex, text in
+                viewModel.editDiarizedWord(utteranceIndex: uIndex, wordIndex: wIndex, newText: text)
+                persistDiarizedAfterEdit()
+            },
+            onRestoreWord: { wIndex in
+                viewModel.restoreDiarizedWord(utteranceIndex: uIndex, wordIndex: wIndex)
+                persistDiarizedAfterEdit()
+            },
+            onRestoreSentence: {
+                viewModel.restoreDiarizedSentence(utteranceIndex: uIndex)
+                persistDiarizedAfterEdit()
+            }
+        )
+    } else {
+        Text(utterance.text) /* …existing fallback… */
+    }
+}
+```
+
+- [ ] **Step 3: Add the diarized persist helper**
+
+In `TranscriptionView`:
+```swift
+private func persistDiarizedAfterEdit() {
+    if let recordingID = appState.currentRecordingID {
+        recordingLibrary.updateDiarization(
+            recordingID: recordingID,
+            utterances: viewModel.diarizedUtterances,
+            speakerNames: speakerNames)
+        recordingLibrary.updateOriginalSegments(recordingID: recordingID, segments: viewModel.originalSegments)
+    } else if let memoID = appState.currentVoiceMemoID {
+        recordingLibrary.cacheVoiceMemoTranscription(
+            id: memoID, text: viewModel.transcribedText, segments: viewModel.segments,
+            model: UserDefaults.standard.string(forKey: "selectedTranscriptionModel") ?? "",
+            diarizedUtterances: viewModel.diarizedUtterances, speakerNames: speakerNames,
+            originalSegments: viewModel.originalSegments)
+    }
+}
+```
+
+- [ ] **Step 4: Build & smoke-test**
+
+Run the build. Expected: BUILD SUCCEEDED. Then `Cmd+R`: diarize a recording → in Edit mode, fix a word inside a speaker block → persists; right-click → Restore word / Restore sentence work in the diarized view.
+
+- [ ] **Step 5: Commit**
+```bash
+git add Transcribe/TranscriptionView.swift
+git commit -m "feat: diarized-view word/sentence editing and restore"
+```
+
+---
+
+## Task 12: Localization
 
 **Files:**
 - Modify: `Transcribe/Resources/en.lproj/Localizable.strings`, `sv.lproj/Localizable.strings`
@@ -1031,7 +1160,7 @@ git commit -m "feat: add interactive transcript localization strings (en + sv)"
 
 ---
 
-## Task 12: Verification
+## Task 13: Verification
 
 - [ ] **Step 1: Full build** — `xcodebuild build ...` → BUILD SUCCEEDED.
 - [ ] **Step 2: Full tests** — `xcodebuild test ...` → all pass incl. `TimedTranscriptTests`, `DiarizationMergerTests`.
@@ -1040,7 +1169,7 @@ git commit -m "feat: add interactive transcript localization strings (en + sv)"
   - Tap a word → audio seeks there.
   - Edit mode → tap a word, change it, commit → text updates, persists; reopen → edit retained.
   - Right-click an edited word → Restore word → original returns; Restore sentence works.
-  - Diarized recording → per-word highlight + seek inside speaker blocks.
+  - Diarized recording → per-word highlight + seek inside speaker blocks; edit a word and Restore it inside a speaker block.
   - Confidence hints toggle → low-confidence words get the dotted cue in edit mode.
   - Old recording without word timings / Berget → falls back to `AutoScrollingTextView` cleanly.
 - [ ] **Step 4: Push**
@@ -1057,4 +1186,4 @@ git push -u origin feature/interactive-transcript
 - **Word identity** is index-based (`w-<segmentIndex>-<wordIndex>`); diarized words offset their segment index by 10,000 to avoid `.id` collisions in a shared scroll space.
 - **Fallback is load-bearing**: any segment without `words` (old cached transcripts, Berget) must render via `AutoScrollingTextView`. `hasWordTimings` gates this.
 - **Confidence threshold** 0.5 is a starting value; tune after seeing real WhisperKit probabilities.
-- **Diarized-view editing & restore are staged.** This plan delivers, in the diarized view, **highlight + tap-to-seek** (read-only — easy, fully wired). It delivers the **full set** (highlight + seek + edit + restore) in the **plain transcript** view. Diarized-view *editing and restore* are intentionally stubbed (the empty `onEditWord`/`onRestoreWord`/`onRestoreSentence` handlers in Task 8 Step 6) because they need parallel view-model methods that mutate `diarizedUtterances[i].words`, re-derive utterance text, and persist via `updateDiarization` — a mechanical fast-follow reusing the same `TimedTranscript` core. **Confirm with the user** whether to fold diarized edit/restore into this pass or ship it as the immediate next increment.
+- **Diarized-view edit/restore** is fully included (Task 11). Task 8 Step 6 wires the diarized `WordFlowView` to view-model methods that are stubbed in Task 8 Step 5 and implemented in Task 11; build Tasks 8 + 11 together (or keep Step 6 handlers as `{ _, _ in }` until Task 11, then replace that block).
