@@ -234,6 +234,8 @@ class RecordingLibraryManager: ObservableObject {
             return
         }
 
+        let metadataByFilename = voiceMemoMetadata(in: voiceMemosFolder)
+
         let resourceKeys: Set<URLResourceKey> = [.creationDateKey, .contentModificationDateKey, .fileSizeKey, .isRegularFileKey]
         let urls = (try? fileManager.contentsOfDirectory(
             at: voiceMemosFolder,
@@ -248,20 +250,39 @@ class RecordingLibraryManager: ObservableObject {
                     return nil
                 }
 
-                let asset = AVURLAsset(url: url)
-                let duration = CMTimeGetSeconds(asset.duration)
-                let date = values.contentModificationDate ?? values.creationDate ?? .distantPast
+                let metadata = metadataByFilename[url.lastPathComponent]
+
+                // Prefer the location-based title and recording date from the Voice
+                // Memos database; fall back to the filename and file dates otherwise.
+                let name = metadata?.title ?? url.deletingPathExtension().lastPathComponent
+                let date = metadata?.date ?? values.contentModificationDate ?? values.creationDate ?? .distantPast
                 let fileSize = Int64(values.fileSize ?? 0)
+
+                let duration: TimeInterval
+                if let dbDuration = metadata?.duration {
+                    duration = dbDuration
+                } else {
+                    let assetDuration = CMTimeGetSeconds(AVURLAsset(url: url).duration)
+                    duration = assetDuration.isFinite ? assetDuration : 0
+                }
 
                 return VoiceMemoRecording(
                     fileURL: url,
-                    name: url.deletingPathExtension().lastPathComponent,
+                    name: name,
                     date: date,
-                    duration: duration.isFinite ? duration : 0,
+                    duration: duration,
                     fileSize: fileSize
                 )
             }
             .sorted { $0.date > $1.date }
+    }
+
+    private func voiceMemoMetadata(in folder: URL) -> [String: VoiceMemoMetadata] {
+        let databaseURL = folder.appendingPathComponent("CloudRecordings.db")
+        guard fileManager.fileExists(atPath: databaseURL.path) else {
+            return [:]
+        }
+        return VoiceMemosMetadataReader.readMetadata(databaseURL: databaseURL)
     }
 
     private func createLibraryDirectoriesIfNeeded() {
