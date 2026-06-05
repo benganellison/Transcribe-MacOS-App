@@ -39,7 +39,13 @@ struct TranscriptionView: View {
     @State private var showLLMPopover = false
     @State private var isProcessingLLM = false
     @State private var llmTask: Task<Void, Never>? = nil
-    
+
+    // Diarization UI state
+    @State private var speakerNames: [String: String] = [:]
+    @State private var renamingSpeakerID: String? = nil
+    @State private var renameFieldText: String = ""
+    @State private var isAutoNaming = false
+
     enum DisplayMode {
         case transcript
         case segments
@@ -120,6 +126,65 @@ struct TranscriptionView: View {
                         model: UserDefaults.standard.string(forKey: "selectedTranscriptionModel") ?? ""
                     )
                 }
+            }
+        }
+        .onChange(of: viewModel.diarizedUtterances.count) { _, newCount in
+            // Persist diarization to the recording metadata once it's produced.
+            if newCount > 0 { persistDiarizationIfPossible() }
+        }
+        .alert(localized("rename_speaker_title"), isPresented: Binding(
+            get: { renamingSpeakerID != nil },
+            set: { if !$0 { renamingSpeakerID = nil } }
+        )) {
+            TextField(localized("speaker_name_placeholder"), text: $renameFieldText)
+            Button(localized("save")) {
+                if let id = renamingSpeakerID {
+                    let trimmed = renameFieldText.trimmingCharacters(in: .whitespaces)
+                    if trimmed.isEmpty {
+                        speakerNames.removeValue(forKey: id)
+                    } else {
+                        speakerNames[id] = trimmed
+                    }
+                    persistDiarizationIfPossible()
+                }
+                renamingSpeakerID = nil
+            }
+            Button(localized("cancel"), role: .cancel) { renamingSpeakerID = nil }
+        }
+    }
+
+    /// Persists the current diarization + speaker-name overrides to the open recording, if any.
+    private func persistDiarizationIfPossible() {
+        guard let recordingID = appState.currentRecordingID,
+              !viewModel.diarizedUtterances.isEmpty else { return }
+        recordingLibrary.updateDiarization(
+            recordingID: recordingID,
+            utterances: viewModel.diarizedUtterances,
+            speakerNames: speakerNames
+        )
+    }
+
+    /// Runs the LLM auto-naming pass and applies confident names as overrides.
+    private func autoNameSpeakers() {
+        let provider: LLMService.Provider = settingsManager.preferredLLMProvider == "berget" ? .berget : .ollama
+        let model = provider == .berget ? settingsManager.selectedBergetLLMModel : settingsManager.selectedOllamaModel
+        let apiKey = settingsManager.bergetKey
+        let ollamaHost = settingsManager.ollamaHost
+        let utterances = viewModel.diarizedUtterances
+
+        isAutoNaming = true
+        Task {
+            let names = await LLMService().suggestSpeakerNames(
+                utterances: utterances,
+                provider: provider,
+                model: model,
+                apiKey: apiKey,
+                ollamaHost: ollamaHost
+            )
+            await MainActor.run {
+                for (id, name) in names { speakerNames[id] = name }
+                isAutoNaming = false
+                persistDiarizationIfPossible()
             }
         }
     }
@@ -242,21 +307,105 @@ struct TranscriptionView: View {
         Group {
             if !viewModel.transcribedText.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
-                    let displayText = displayMode == .segments ? formatAsSegments(viewModel.transcribedText) : viewModel.transcribedText
-                    
-                    AutoScrollingTextView(
-                        text: displayText,
-                        fontSize: fontSize,
-                        isStreaming: viewModel.isTranscribing
-                    )
-                    
+                    if !viewModel.diarizedUtterances.isEmpty && displayMode != .segments {
+                        diarizedTranscriptView
+                    } else {
+                        let displayText = displayMode == .segments ? formatAsSegments(viewModel.transcribedText) : viewModel.transcribedText
+
+                        AutoScrollingTextView(
+                            text: displayText,
+                            fontSize: fontSize,
+                            isStreaming: viewModel.isTranscribing
+                        )
+                    }
+
                     if viewModel.isTranscribing {
                         streamingIndicator
                     }
+
+                    diarizationControls
                 }
             } else {
                 transcriptionProgressView
             }
+        }
+    }
+
+    /// Speaker-grouped transcript. Tapping a speaker label opens the rename alert.
+    private var diarizedTranscriptView: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                ForEach(viewModel.diarizedUtterances) { utterance in
+                    VStack(alignment: .leading, spacing: 3) {
+                        Button {
+                            renamingSpeakerID = utterance.speakerID
+                            renameFieldText = speakerNames[utterance.speakerID] ?? utterance.displayName
+                        } label: {
+                            Text(speakerNames[utterance.speakerID] ?? utterance.displayName)
+                                .font(.system(size: max(11, fontSize - 2), weight: .semibold))
+                                .foregroundColor(.primaryAccent)
+                        }
+                        .buttonStyle(.plain)
+                        .help(localized("rename_speaker_title"))
+
+                        Text(utterance.text)
+                            .font(.system(size: fontSize))
+                            .foregroundColor(.textPrimary)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
+            .padding(16)
+        }
+    }
+
+    /// Diarization status line + the on-demand / auto-name actions.
+    @ViewBuilder
+    private var diarizationControls: some View {
+        if viewModel.isDiarizing {
+            HStack(spacing: 8) {
+                AccentSpinner(size: 14, lineWidth: 2)
+                Text(localized("identifying_speakers"))
+                    .font(.system(size: 12))
+                    .foregroundColor(.textSecondary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+        } else if let error = viewModel.diarizationError {
+            Text(error)
+                .font(.system(size: 12))
+                .foregroundColor(.red)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+        } else if viewModel.diarizedUtterances.isEmpty {
+            if !viewModel.isTranscribing {
+                Button(action: { Task { await viewModel.diarize() } }) {
+                    Label(localized("identify_speakers_button"), systemImage: "person.2.wave.2")
+                        .font(.system(size: 12, weight: .medium))
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(.primaryAccent)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+            }
+        } else {
+            Button(action: { autoNameSpeakers() }) {
+                HStack(spacing: 6) {
+                    if isAutoNaming {
+                        AccentSpinner(size: 12, lineWidth: 2)
+                    } else {
+                        Image(systemName: "sparkles")
+                    }
+                    Text(localized("auto_name_speakers_button"))
+                }
+                .font(.system(size: 12, weight: .medium))
+            }
+            .buttonStyle(.plain)
+            .foregroundColor(.primaryAccent)
+            .disabled(isAutoNaming)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
         }
     }
     
