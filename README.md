@@ -44,6 +44,8 @@ xcodebuild build -scheme Transcribe CLANG_COVERAGE_MAPPING=NO
 
 The default model (KB Whisper Small) downloads automatically on first launch.
 
+For detailed instructions on building a local app for hands-on testing, running the test suite, and troubleshooting, see [DEVELOPMENT.md](DEVELOPMENT.md).
+
 ## Models
 
 **Local (on-device):**
