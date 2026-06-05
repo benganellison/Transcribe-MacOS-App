@@ -276,3 +276,7 @@
 "diarization_sensitivity_label" = "Sensitivity";
 "more_speakers" = "More speakers";
 "fewer_speakers" = "Fewer speakers";
+"speaker_range_label" = "Number of speakers (min–max)";
+"min_speakers_placeholder" = "Min";
+"max_speakers_placeholder" = "Max";
+"speaker_range_help" = "Optional range, e.g. at least 3, at most 5. Leave blank for automatic. A range avoids over-splitting a speaker better than forcing an exact number.";

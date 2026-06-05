@@ -276,3 +276,7 @@
 "diarization_sensitivity_label" = "Känslighet";
 "more_speakers" = "Fler talare";
 "fewer_speakers" = "Färre talare";
+"speaker_range_label" = "Antal talare (min–max)";
+"min_speakers_placeholder" = "Min";
+"max_speakers_placeholder" = "Max";
+"speaker_range_help" = "Valfritt intervall, t.ex. minst 3, högst 5. Lämna tomt för automatiskt. Ett intervall undviker att en talare delas upp för mycket bättre än att tvinga ett exakt antal.";

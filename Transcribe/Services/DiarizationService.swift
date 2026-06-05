@@ -16,10 +16,14 @@ final class DiarizationService {
 
     /// Tunable diarization parameters surfaced to the UI.
     struct Options: Equatable {
-        /// Expected number of distinct speakers. When set, clustering is forced to
-        /// this exact count — the strongest lever for meetings where several people
-        /// speak only briefly and would otherwise be merged into dominant speakers.
-        var expectedSpeakers: Int?
+        /// Lower bound on the number of speakers. Forces the clustering to separate
+        /// at least this many — use it to pull apart voices that get merged.
+        var minSpeakers: Int?
+
+        /// Upper bound on the number of speakers. Caps the count — use it to stop a
+        /// single varied speaker from being over-split into several. If minSpeakers
+        /// equals maxSpeakers, the count is effectively fixed.
+        var maxSpeakers: Int?
 
         /// Clustering distance threshold (Euclidean, unit-normalized embeddings).
         /// Lower = more willing to split into separate speakers; higher = more merging.
@@ -32,7 +36,8 @@ final class DiarizationService {
         var minSegmentDuration: Double
 
         static let `default` = Options(
-            expectedSpeakers: nil,
+            minSpeakers: nil,
+            maxSpeakers: nil,
             clusteringThreshold: 0.6,
             minSegmentDuration: 0.45
         )
@@ -55,8 +60,14 @@ final class DiarizationService {
     private func makeConfig(_ options: Options) -> OfflineDiarizerConfig {
         var clustering = OfflineDiarizerConfig.Clustering.community
         clustering.threshold = options.clusteringThreshold
-        if let count = options.expectedSpeakers, count > 0 {
-            clustering.numSpeakers = count
+        // Use a range (min/max) rather than forcing an exact count: forcing numSpeakers
+        // makes VBx manufacture splits to hit the number, over-splitting a dominant
+        // speaker. A range lets it choose the natural count within bounds.
+        if let mn = options.minSpeakers, mn > 0 {
+            clustering.minSpeakers = mn
+        }
+        if let mx = options.maxSpeakers, mx > 0 {
+            clustering.maxSpeakers = mx
         }
 
         var embedding = OfflineDiarizerConfig.Embedding.community
@@ -66,8 +77,9 @@ final class DiarizationService {
     }
 
     private func signature(_ options: Options) -> String {
-        let speakers = options.expectedSpeakers.map(String.init) ?? "-"
-        return "\(speakers)|\(options.clusteringThreshold)|\(options.minSegmentDuration)"
+        let mn = options.minSpeakers.map(String.init) ?? "-"
+        let mx = options.maxSpeakers.map(String.init) ?? "-"
+        return "\(mn)|\(mx)|\(options.clusteringThreshold)|\(options.minSegmentDuration)"
     }
 
     /// Loads (and downloads on first use) the CoreML diarization models, rebuilding

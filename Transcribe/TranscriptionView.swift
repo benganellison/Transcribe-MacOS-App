@@ -46,7 +46,8 @@ struct TranscriptionView: View {
     @State private var renameFieldText: String = ""
     @State private var isAutoNaming = false
     @State private var showDiarizationPopover = false
-    @State private var expectedSpeakersText: String = ""
+    @State private var minSpeakersText: String = ""
+    @State private var maxSpeakersText: String = ""
     @State private var diarizationThreshold: Double = DiarizationService.Options.default.clusteringThreshold
 
     enum DisplayMode {
@@ -308,13 +309,20 @@ struct TranscriptionView: View {
                 .foregroundColor(.textPrimary)
 
             VStack(alignment: .leading, spacing: 6) {
-                Text(localized("expected_speakers_label"))
+                Text(localized("speaker_range_label"))
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(.textSecondary)
-                TextField(localized("expected_speakers_placeholder"), text: $expectedSpeakersText)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 120)
-                Text(localized("expected_speakers_help"))
+                HStack(spacing: 8) {
+                    TextField(localized("min_speakers_placeholder"), text: $minSpeakersText)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 70)
+                    Text("–")
+                        .foregroundColor(.textTertiary)
+                    TextField(localized("max_speakers_placeholder"), text: $maxSpeakersText)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 70)
+                }
+                Text(localized("speaker_range_help"))
                     .font(.system(size: 11))
                     .foregroundColor(.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -354,9 +362,11 @@ struct TranscriptionView: View {
 
     /// Reads the popover inputs and kicks off a diarization pass (without re-transcribing).
     private func runDiarization() {
-        let count = Int(expectedSpeakersText.trimmingCharacters(in: .whitespaces))
+        let minCount = Int(minSpeakersText.trimmingCharacters(in: .whitespaces))
+        let maxCount = Int(maxSpeakersText.trimmingCharacters(in: .whitespaces))
         let options = DiarizationService.Options(
-            expectedSpeakers: count,
+            minSpeakers: minCount,
+            maxSpeakers: maxCount,
             clusteringThreshold: diarizationThreshold,
             minSegmentDuration: DiarizationService.Options.default.minSegmentDuration
         )
