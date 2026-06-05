@@ -28,8 +28,10 @@ struct SavedRecording: Identifiable, Codable, Equatable {
     var transcriptionStatus: TranscriptionStatus
     var transcriptionModel: String?
     var transcribedAt: Date?
-    /// Speaker-labeled turns produced by diarization (schema v2+). Optional so v1
-    /// metadata decodes cleanly (missing key → nil).
+    /// Cached transcription segments (with word timings when available) so a recording
+    /// can be reopened without re-transcribing. Optional → older metadata decodes cleanly.
+    var transcriptionSegments: [TranscriptionSegmentData]?
+    /// Speaker-labeled turns produced by diarization. Optional so older metadata decodes.
     var diarizedUtterances: [DiarizedUtterance]?
     /// User/LLM speaker-name overrides keyed by speaker ID, e.g. ["Speaker 1": "Anna"].
     var speakerNames: [String: String]?
@@ -50,6 +52,7 @@ struct SavedRecording: Identifiable, Codable, Equatable {
         transcriptionStatus: TranscriptionStatus = .notStarted,
         transcriptionModel: String? = nil,
         transcribedAt: Date? = nil,
+        transcriptionSegments: [TranscriptionSegmentData]? = nil,
         diarizedUtterances: [DiarizedUtterance]? = nil,
         speakerNames: [String: String]? = nil,
         source: RecordingSource,
@@ -69,6 +72,7 @@ struct SavedRecording: Identifiable, Codable, Equatable {
         self.transcriptionStatus = transcriptionStatus
         self.transcriptionModel = transcriptionModel
         self.transcribedAt = transcribedAt
+        self.transcriptionSegments = transcriptionSegments
         self.diarizedUtterances = diarizedUtterances
         self.speakerNames = speakerNames
         self.source = source

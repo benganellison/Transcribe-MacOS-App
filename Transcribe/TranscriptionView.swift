@@ -113,22 +113,16 @@ struct TranscriptionView: View {
             Text(viewModel.exportErrorMessage)
         }
         .onAppear {
-            viewModel.startTranscription()
+            loadOrTranscribe()
             // Pre-fetch Ollama models so the LLM dropdown has data
             Task {
                 await settingsManager.checkOllamaConnection()
             }
         }
         .onChange(of: viewModel.isTranscribing) { wasTranscribing, isNowTranscribing in
-            // Save transcription back to recording metadata when complete
+            // Save transcription (text + segments) when a fresh run completes.
             if wasTranscribing && !isNowTranscribing && !viewModel.transcribedText.isEmpty {
-                if let recordingID = appState.currentRecordingID {
-                    recordingLibrary.updateTranscription(
-                        recordingID: recordingID,
-                        text: viewModel.transcribedText,
-                        model: UserDefaults.standard.string(forKey: "selectedTranscriptionModel") ?? ""
-                    )
-                }
+                persistTranscription()
             }
         }
         .onChange(of: viewModel.diarizedUtterances.count) { _, newCount in
@@ -189,6 +183,48 @@ struct TranscriptionView: View {
                 isAutoNaming = false
                 persistDiarizationIfPossible()
             }
+        }
+    }
+
+    /// Loads a cached transcription for the open recording/voice memo if one exists,
+    /// otherwise starts a fresh transcription. Keeps re-opening instant and lets
+    /// diarization re-run without re-transcribing.
+    private func loadOrTranscribe() {
+        if let recordingID = appState.currentRecordingID,
+           let saved = recordingLibrary.recording(id: recordingID),
+           let text = saved.transcription, !text.isEmpty {
+            viewModel.loadPersisted(text: text, segments: saved.transcriptionSegments ?? [])
+            return
+        }
+
+        if let memoID = appState.currentVoiceMemoID,
+           let cached = recordingLibrary.cachedVoiceMemoTranscription(id: memoID),
+           !cached.text.isEmpty {
+            viewModel.loadPersisted(text: cached.text, segments: cached.segments)
+            return
+        }
+
+        viewModel.startTranscription()
+    }
+
+    /// Persists the just-completed transcription to the saved recording or the
+    /// voice-memo sidecar cache, depending on what was opened.
+    private func persistTranscription() {
+        let model = UserDefaults.standard.string(forKey: "selectedTranscriptionModel") ?? ""
+        if let recordingID = appState.currentRecordingID {
+            recordingLibrary.updateTranscription(
+                recordingID: recordingID,
+                text: viewModel.transcribedText,
+                segments: viewModel.segments,
+                model: model
+            )
+        } else if let memoID = appState.currentVoiceMemoID {
+            recordingLibrary.cacheVoiceMemoTranscription(
+                id: memoID,
+                text: viewModel.transcribedText,
+                segments: viewModel.segments,
+                model: model
+            )
         }
     }
     
@@ -1576,6 +1612,19 @@ class TranscriptionViewModel: ObservableObject {
         }
     }
     
+    /// Seeds the view with a previously saved transcription instead of running the
+    /// engine, so reopening a recording is instant and diarization can re-run from
+    /// the cached segments/word timings.
+    func loadPersisted(text: String, segments: [TranscriptionSegmentData]) {
+        transcribedText = text
+        self.segments = segments
+        wordCount = text.split(separator: " ").count
+        progress = 1.0
+        isTranscribing = false
+        statusMessage = ""
+        errorMessage = nil
+    }
+
     func retranscribe() {
         // Reset all state for a fresh transcription
         transcribedText = ""
@@ -2072,14 +2121,14 @@ class TranscriptionViewModel: ObservableObject {
     }
 }
 
-struct TranscriptionSegmentData {
+struct TranscriptionSegmentData: Codable, Equatable {
     let start: Double
     let end: Double
     let text: String
     let words: [WordTimestamp]?
 }
 
-struct WordTimestamp {
+struct WordTimestamp: Codable, Equatable {
     let word: String
     let start: Double
     let end: Double

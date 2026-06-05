@@ -382,7 +382,7 @@ struct RecordingLibraryView: View {
     }
 
     private func transcribe(memo: VoiceMemoRecording) {
-        appState.openFileForTranscription(memo.fileURL)
+        appState.openVoiceMemoForTranscription(memo.fileURL, voiceMemoID: memo.id)
         appState.showRecordingLibrary = false
     }
 
