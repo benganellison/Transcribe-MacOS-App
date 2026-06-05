@@ -148,4 +148,60 @@ final class LLMService: Sendable {
             }
         }
     }
+
+    /// Asks the LLM to infer real speaker names from a labeled transcript.
+    /// Returns a map from speaker label (e.g. "Speaker 1") to a name (e.g. "Anna").
+    /// Only includes labels the model is confident about; returns `[:]` on any failure.
+    /// This is additive — callers should treat an empty result as "keep generic labels".
+    func suggestSpeakerNames(
+        utterances: [DiarizedUtterance],
+        provider: Provider,
+        model: String,
+        apiKey: String = "",
+        ollamaHost: String = "http://127.0.0.1:11434"
+    ) async -> [String: String] {
+        guard !utterances.isEmpty else { return [:] }
+
+        // Build a compact labeled transcript keyed by the stable speaker ID.
+        let transcript = utterances
+            .map { "\($0.speakerID): \($0.text)" }
+            .joined(separator: "\n")
+
+        let system = """
+        You identify speaker names in a transcript. The transcript uses generic labels \
+        like "Speaker 1". Using only evidence in the text (self-introductions such as \
+        "I'm Anna", or direct address such as "Bob, what do you think?"), map labels to \
+        real first names. Respond with ONLY a JSON object mapping label to name, e.g. \
+        {"Speaker 1":"Anna"}. Omit any speaker you are not confident about. No prose.
+        """
+
+        var collected = ""
+        do {
+            for try await chunk in streamCompletion(
+                systemPrompt: system, userMessage: transcript,
+                provider: provider, model: model, apiKey: apiKey, ollamaHost: ollamaHost
+            ) {
+                collected += chunk
+            }
+        } catch {
+            return [:]
+        }
+
+        // Extract the first {...} JSON object from the response.
+        guard let start = collected.firstIndex(of: "{"),
+              let end = collected.lastIndex(of: "}"),
+              start < end else { return [:] }
+        let json = String(collected[start...end])
+        guard let data = json.data(using: .utf8),
+              let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
+
+        var result: [String: String] = [:]
+        for (key, value) in raw {
+            if let name = value as? String,
+               !name.trimmingCharacters(in: .whitespaces).isEmpty {
+                result[key] = name
+            }
+        }
+        return result
+    }
 }
