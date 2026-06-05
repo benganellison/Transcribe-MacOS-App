@@ -19,13 +19,17 @@ let package = Package(
 
         // YouTubeKit for YouTube video downloading
         .package(url: "https://github.com/alexeichhorn/YouTubeKit.git", from: "0.3.0"),
+
+        // FluidAudio for on-device speaker diarization (CoreML)
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.12.4"),
     ],
     targets: [
         .target(
             name: "Transcribe",
             dependencies: [
                 "WhisperKit",
-                "YouTubeKit"
+                "YouTubeKit",
+                .product(name: "FluidAudio", package: "FluidAudio"),
             ],
             path: "Transcribe",
             exclude: [
