@@ -547,6 +547,22 @@ struct TranscriptionView: View {
         }
     }
 
+    private func persistDiarizedAfterEdit() {
+        if let recordingID = appState.currentRecordingID {
+            recordingLibrary.updateDiarization(
+                recordingID: recordingID,
+                utterances: viewModel.diarizedUtterances,
+                speakerNames: speakerNames)
+            recordingLibrary.updateOriginalSegments(recordingID: recordingID, segments: viewModel.originalSegments)
+        } else if let memoID = appState.currentVoiceMemoID {
+            recordingLibrary.cacheVoiceMemoTranscription(
+                id: memoID, text: viewModel.transcribedText, segments: viewModel.segments,
+                model: UserDefaults.standard.string(forKey: "selectedTranscriptionModel") ?? "",
+                diarizedUtterances: viewModel.diarizedUtterances, speakerNames: speakerNames,
+                originalSegments: viewModel.originalSegments)
+        }
+    }
+
     private var transcriptionContent: some View {
         Group {
             if !viewModel.transcribedText.isEmpty {
@@ -590,7 +606,7 @@ struct TranscriptionView: View {
     private var diarizedTranscriptView: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                ForEach(viewModel.diarizedUtterances) { utterance in
+                ForEach(Array(viewModel.diarizedUtterances.enumerated()), id: \.element.id) { uIndex, utterance in
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 6) {
                             Button {
@@ -614,16 +630,25 @@ struct TranscriptionView: View {
                         if let uWords = utterance.words, !uWords.isEmpty {
                             WordFlowView(
                                 words: uWords,
-                                segmentIndex: 10_000 + (viewModel.diarizedUtterances.firstIndex(of: utterance) ?? 0),
+                                segmentIndex: 10_000 + uIndex,
                                 currentTime: viewModel.currentTime,
                                 fontSize: fontSize,
                                 isEditing: isEditingTranscript,
                                 showConfidenceHints: isEditingTranscript || showConfidenceHints,
                                 lowConfidenceThreshold: 0.5,
                                 onSeek: { viewModel.seek(to: $0) },
-                                onEditWord: { _, _ in },          // diarized word edit wired in Task 11
-                                onRestoreWord: { _ in },
-                                onRestoreSentence: { }
+                                onEditWord: { wIndex, text in
+                                    viewModel.editDiarizedWord(utteranceIndex: uIndex, wordIndex: wIndex, newText: text)
+                                    persistDiarizedAfterEdit()
+                                },
+                                onRestoreWord: { wIndex in
+                                    viewModel.restoreDiarizedWord(utteranceIndex: uIndex, wordIndex: wIndex)
+                                    persistDiarizedAfterEdit()
+                                },
+                                onRestoreSentence: {
+                                    viewModel.restoreDiarizedSentence(utteranceIndex: uIndex)
+                                    persistDiarizedAfterEdit()
+                                }
                             )
                         } else {
                             Text(utterance.text)
@@ -1825,6 +1850,49 @@ class TranscriptionViewModel: ObservableObject {
         else { return }
         segments[segmentIndex] = originalSeg
         transcribedText = TimedTranscript.rebuildText(from: segments)
+    }
+
+    func editDiarizedWord(utteranceIndex: Int, wordIndex: Int, newText: String) {
+        guard diarizedUtterances.indices.contains(utteranceIndex),
+              var words = diarizedUtterances[utteranceIndex].words,
+              words.indices.contains(wordIndex) else { return }
+        let trimmed = newText.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        captureOriginalIfNeeded()
+        words[wordIndex].word = trimmed
+        diarizedUtterances[utteranceIndex].words = words
+        diarizedUtterances[utteranceIndex].text = words.map(\.word).joined(separator: " ")
+    }
+
+    func editDiarizedSentence(utteranceIndex: Int, newText: String) {
+        guard diarizedUtterances.indices.contains(utteranceIndex) else { return }
+        captureOriginalIfNeeded()
+        let u = diarizedUtterances[utteranceIndex]
+        let temp = TranscriptionSegmentData(start: u.startTime, end: u.endTime, text: u.text, words: u.words)
+        let reconciled = TimedTranscript.reconcileSentence(temp, newText: newText)
+        diarizedUtterances[utteranceIndex].text = reconciled.text
+        diarizedUtterances[utteranceIndex].words = reconciled.words
+    }
+
+    func restoreDiarizedWord(utteranceIndex: Int, wordIndex: Int) {
+        guard let original = originalSegments,
+              diarizedUtterances.indices.contains(utteranceIndex),
+              var words = diarizedUtterances[utteranceIndex].words,
+              words.indices.contains(wordIndex),
+              let originalWord = TimedTranscript.originalWord(in: original, atMidpointOf: words[wordIndex])
+        else { return }
+        words[wordIndex] = originalWord
+        diarizedUtterances[utteranceIndex].words = words
+        diarizedUtterances[utteranceIndex].text = words.map(\.word).joined(separator: " ")
+    }
+
+    func restoreDiarizedSentence(utteranceIndex: Int) {
+        guard let original = originalSegments,
+              diarizedUtterances.indices.contains(utteranceIndex),
+              var words = diarizedUtterances[utteranceIndex].words else { return }
+        words = words.map { TimedTranscript.originalWord(in: original, atMidpointOf: $0) ?? $0 }
+        diarizedUtterances[utteranceIndex].words = words
+        diarizedUtterances[utteranceIndex].text = words.map(\.word).joined(separator: " ")
     }
 
     func restoreAll() {
