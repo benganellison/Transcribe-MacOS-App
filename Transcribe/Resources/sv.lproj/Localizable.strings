@@ -280,3 +280,10 @@
 "min_speakers_placeholder" = "Min";
 "max_speakers_placeholder" = "Max";
 "speaker_range_help" = "Valfritt intervall, t.ex. minst 3, högst 5. Lämna tomt för automatiskt. Ett intervall undviker att en talare delas upp för mycket bättre än att tvinga ett exakt antal.";
+
+/* Interactive transcript */
+"edit_transcript" = "Redigera transkription";
+"follow_playback" = "Följ uppspelning";
+"restore_word" = "Återställ ord";
+"restore_sentence" = "Återställ mening";
+"restore_all" = "Återställ allt";
