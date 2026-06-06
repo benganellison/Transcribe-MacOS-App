@@ -14,11 +14,14 @@ struct WordFlowView: View {
 
     let onSeek: (TimeInterval) -> Void
     let onEditWord: (_ wordIndex: Int, _ newText: String) -> Void
+    let onEditSentence: (_ newText: String) -> Void
     let onRestoreWord: (_ wordIndex: Int) -> Void
     let onRestoreSentence: () -> Void
 
     @State private var editingWordIndex: Int? = nil
     @State private var editText: String = ""
+    @State private var showSentenceEditor = false
+    @State private var sentenceText = ""
 
     var body: some View {
         FlowLayout(spacing: 4, lineSpacing: 6) {
@@ -26,6 +29,11 @@ struct WordFlowView: View {
                 wordView(index: index, word: word)
                     .id("w-\(segmentIndex)-\(index)")
             }
+        }
+        .alert(localized("edit_sentence"), isPresented: $showSentenceEditor) {
+            TextField(localized("edit_sentence"), text: $sentenceText)
+            Button(localized("save")) { onEditSentence(sentenceText) }
+            Button(localized("cancel"), role: .cancel) { }
         }
     }
 
@@ -54,6 +62,11 @@ struct WordFlowView: View {
                     }
                 }
                 .contextMenu {
+                    Button(localized("edit_sentence")) {
+                        sentenceText = words.map(\.word).joined(separator: " ")
+                        showSentenceEditor = true
+                    }
+                    Divider()
                     Button(localized("restore_word")) { onRestoreWord(index) }
                     Button(localized("restore_sentence")) { onRestoreSentence() }
                 }

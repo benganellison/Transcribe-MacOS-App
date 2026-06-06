@@ -140,6 +140,7 @@ struct GeneralSettingsView: View {
     @EnvironmentObject var settingsManager: SettingsManager
     @StateObject private var localizationManager = LocalizationManager.shared
     @AppStorage("identifySpeakers") private var identifySpeakers = false
+    @AppStorage("speakerNamingPrompt") private var speakerNamingPrompt: String = LLMService.defaultSpeakerNamingPrompt
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -206,6 +207,40 @@ struct GeneralSettingsView: View {
                         Text(localized("identify_speakers_help"))
                             .font(.system(size: 12))
                             .foregroundColor(.textSecondary)
+                    }
+                }
+
+                // Auto-name with AI: editable prompt
+                SettingsCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Label {
+                            Text(localized("auto_name_prompt_label"))
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(.textPrimary)
+                        } icon: {
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 18))
+                                .foregroundStyle(LinearGradient.accentGradient)
+                        }
+
+                        TextEditor(text: $speakerNamingPrompt)
+                            .font(.system(size: 12))
+                            .frame(minHeight: 90)
+                            .padding(6)
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.borderLight, lineWidth: 1))
+
+                        HStack {
+                            Text(localized("auto_name_prompt_help"))
+                                .font(.system(size: 12))
+                                .foregroundColor(.textSecondary)
+                            Spacer()
+                            Button(localized("reset_to_default")) {
+                                speakerNamingPrompt = LLMService.defaultSpeakerNamingPrompt
+                            }
+                            .font(.system(size: 12))
+                            .foregroundColor(.primaryAccent)
+                            .buttonStyle(.plain)
+                        }
                     }
                 }
             }

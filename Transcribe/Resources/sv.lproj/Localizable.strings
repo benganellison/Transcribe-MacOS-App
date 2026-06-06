@@ -288,3 +288,7 @@
 "restore_word" = "Återställ ord";
 "restore_sentence" = "Återställ mening";
 "restore_all" = "Återställ allt";
+"edit_sentence" = "Redigera mening";
+"auto_name_prompt_label" = "Namnge med AI — prompt";
+"auto_name_prompt_help" = "Instruktionen som skickas till språkmodellen när talare namnges utifrån transkriptionen.";
+"reset_to_default" = "Återställ till standard";

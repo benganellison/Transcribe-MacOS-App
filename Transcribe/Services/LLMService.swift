@@ -149,16 +149,28 @@ final class LLMService: Sendable {
         }
     }
 
+    /// Default system prompt for speaker auto-naming. Exposed so it can seed an
+    /// editable user setting.
+    static let defaultSpeakerNamingPrompt = """
+    You identify speaker names in a transcript. The transcript uses generic labels \
+    like "Speaker 1". Using only evidence in the text (self-introductions such as \
+    "I'm Anna", or direct address such as "Bob, what do you think?"), map labels to \
+    real first names. Respond with ONLY a JSON object mapping label to name, e.g. \
+    {"Speaker 1":"Anna"}. Omit any speaker you are not confident about. No prose.
+    """
+
     /// Asks the LLM to infer real speaker names from a labeled transcript.
     /// Returns a map from speaker label (e.g. "Speaker 1") to a name (e.g. "Anna").
     /// Only includes labels the model is confident about; returns `[:]` on any failure.
     /// This is additive — callers should treat an empty result as "keep generic labels".
+    /// `systemPrompt` overrides the built-in prompt when non-empty.
     func suggestSpeakerNames(
         utterances: [DiarizedUtterance],
         provider: Provider,
         model: String,
         apiKey: String = "",
-        ollamaHost: String = "http://127.0.0.1:11434"
+        ollamaHost: String = "http://127.0.0.1:11434",
+        systemPrompt: String? = nil
     ) async -> [String: String] {
         guard !utterances.isEmpty else { return [:] }
 
@@ -167,13 +179,8 @@ final class LLMService: Sendable {
             .map { "\($0.speakerID): \($0.text)" }
             .joined(separator: "\n")
 
-        let system = """
-        You identify speaker names in a transcript. The transcript uses generic labels \
-        like "Speaker 1". Using only evidence in the text (self-introductions such as \
-        "I'm Anna", or direct address such as "Bob, what do you think?"), map labels to \
-        real first names. Respond with ONLY a JSON object mapping label to name, e.g. \
-        {"Speaker 1":"Anna"}. Omit any speaker you are not confident about. No prose.
-        """
+        let trimmedCustom = systemPrompt?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let system = (trimmedCustom?.isEmpty == false ? trimmedCustom! : Self.defaultSpeakerNamingPrompt)
 
         var collected = ""
         do {

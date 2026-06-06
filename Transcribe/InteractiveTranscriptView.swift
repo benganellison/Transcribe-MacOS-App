@@ -10,6 +10,7 @@ struct InteractiveTranscriptView: View {
 
     let onSeek: (TimeInterval) -> Void
     let onEditWord: (_ segmentIndex: Int, _ wordIndex: Int, _ newText: String) -> Void
+    let onEditSentence: (_ segmentIndex: Int, _ newText: String) -> Void
     let onRestoreWord: (_ segmentIndex: Int, _ wordIndex: Int) -> Void
     let onRestoreSentence: (_ segmentIndex: Int) -> Void
 
@@ -28,6 +29,7 @@ struct InteractiveTranscriptView: View {
                             lowConfidenceThreshold: 0.5,
                             onSeek: onSeek,
                             onEditWord: { wIndex, text in onEditWord(sIndex, wIndex, text) },
+                            onEditSentence: { text in onEditSentence(sIndex, text) },
                             onRestoreWord: { wIndex in onRestoreWord(sIndex, wIndex) },
                             onRestoreSentence: { onRestoreSentence(sIndex) }
                         )

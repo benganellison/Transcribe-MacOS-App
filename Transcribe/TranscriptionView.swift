@@ -196,7 +196,8 @@ struct TranscriptionView: View {
                 provider: provider,
                 model: model,
                 apiKey: apiKey,
-                ollamaHost: ollamaHost
+                ollamaHost: ollamaHost,
+                systemPrompt: settingsManager.speakerNamingPrompt
             )
             await MainActor.run {
                 for (id, name) in names { speakerNames[id] = name }
@@ -526,6 +527,11 @@ struct TranscriptionView: View {
         persistAfterEdit()
     }
 
+    private func applySentenceEdit(segmentIndex: Int, newText: String) {
+        viewModel.editSentence(segmentIndex: segmentIndex, newText: newText)
+        persistAfterEdit()
+    }
+
     private func restoreWord(segmentIndex: Int, wordIndex: Int) {
         viewModel.restoreWord(segmentIndex: segmentIndex, wordIndex: wordIndex)
         persistAfterEdit()
@@ -583,6 +589,7 @@ struct TranscriptionView: View {
                             showConfidenceHints: isEditingTranscript || showConfidenceHints,
                             onSeek: { viewModel.seek(to: $0) },
                             onEditWord: { s, w, text in applyWordEdit(segmentIndex: s, wordIndex: w, newText: text) },
+                            onEditSentence: { s, text in applySentenceEdit(segmentIndex: s, newText: text) },
                             onRestoreWord: { s, w in restoreWord(segmentIndex: s, wordIndex: w) },
                             onRestoreSentence: { s in restoreSentence(segmentIndex: s) }
                         )
@@ -643,6 +650,10 @@ struct TranscriptionView: View {
                                 onSeek: { viewModel.seek(to: $0) },
                                 onEditWord: { wIndex, text in
                                     viewModel.editDiarizedWord(utteranceIndex: uIndex, wordIndex: wIndex, newText: text)
+                                    persistDiarizedAfterEdit()
+                                },
+                                onEditSentence: { text in
+                                    viewModel.editDiarizedSentence(utteranceIndex: uIndex, newText: text)
                                     persistDiarizedAfterEdit()
                                 },
                                 onRestoreWord: { wIndex in
@@ -1573,7 +1584,9 @@ struct TranscriptionView: View {
             systemPrompt += "\n\n" + localized("additional_information") + ":\n" + additionalPromptInfo
         }
         
-        let transcription = viewModel.transcribedText
+        // Feed the current (edited + speaker-labeled) transcript so summaries/etc.
+        // reflect corrections and know who said what.
+        let transcription = viewModel.currentTranscriptText(speakerNames: speakerNames)
         let provider: LLMService.Provider = settingsManager.preferredLLMProvider == "berget" ? .berget : .ollama
         let model = provider == .berget ? settingsManager.selectedBergetLLMModel : settingsManager.selectedOllamaModel
         let apiKey = settingsManager.bergetKey

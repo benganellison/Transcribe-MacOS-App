@@ -288,3 +288,7 @@
 "restore_word" = "Restore word";
 "restore_sentence" = "Restore sentence";
 "restore_all" = "Restore all";
+"edit_sentence" = "Edit sentence";
+"auto_name_prompt_label" = "Auto-name with AI — prompt";
+"auto_name_prompt_help" = "The instruction sent to the LLM when naming speakers from the transcript.";
+"reset_to_default" = "Reset to default";

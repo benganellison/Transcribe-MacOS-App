@@ -102,7 +102,10 @@ class SettingsManager: ObservableObject {
     @Published var ollamaModels: [String] = []
     @Published var ollamaConnectionStatus: String = ""
     @AppStorage("selectedOllamaModel") var selectedOllamaModel: String = ""
-    
+
+    // Speaker auto-naming (diarization): editable LLM prompt, seeded from the built-in default
+    @AppStorage("speakerNamingPrompt") var speakerNamingPrompt: String = LLMService.defaultSpeakerNamingPrompt
+
     // Recording settings
     @AppStorage("recordingQuality") var recordingQuality: String = "high"
     @AppStorage("enableNoiseReduction") var enableNoiseReduction: Bool = true
