@@ -50,6 +50,10 @@ struct TranscriptionView: View {
     @State private var maxSpeakersText: String = ""
     @State private var diarizationThreshold: Double = DiarizationService.Options.default.clusteringThreshold
 
+    @State private var isEditingTranscript = false
+    @State private var followPlayback = true
+    @AppStorage("showConfidenceHints") private var showConfidenceHints = false
+
     enum DisplayMode {
         case transcript
         case segments
@@ -268,6 +272,13 @@ struct TranscriptionView: View {
 
             if !viewModel.transcribedText.isEmpty && !viewModel.isTranscribing {
                 diarizationMenuButton
+            }
+
+            if !viewModel.isTranscribing && hasWordTimings {
+                Toggle(isOn: $followPlayback) { Image(systemName: "arrow.down.to.line") }
+                    .toggleStyle(.button).help(localized("follow_playback"))
+                Toggle(isOn: $isEditingTranscript) { Image(systemName: "pencil") }
+                    .toggleStyle(.button).help(localized("edit_transcript"))
             }
 
             transcriptionStats
@@ -491,12 +502,33 @@ struct TranscriptionView: View {
         }
     }
 
+    private var hasWordTimings: Bool {
+        viewModel.segments.contains { ($0.words?.isEmpty == false) }
+    }
+
+    private func applyWordEdit(segmentIndex: Int, wordIndex: Int, newText: String) { }
+    private func restoreWord(segmentIndex: Int, wordIndex: Int) { }
+    private func restoreSentence(segmentIndex: Int) { }
+
     private var transcriptionContent: some View {
         Group {
             if !viewModel.transcribedText.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
                     if !viewModel.diarizedUtterances.isEmpty && displayMode != .segments {
                         diarizedTranscriptView
+                    } else if !viewModel.isTranscribing && hasWordTimings && displayMode != .segments {
+                        InteractiveTranscriptView(
+                            segments: viewModel.segments,
+                            currentTime: viewModel.currentTime,
+                            fontSize: fontSize,
+                            isEditing: isEditingTranscript,
+                            followPlayback: followPlayback,
+                            showConfidenceHints: isEditingTranscript || showConfidenceHints,
+                            onSeek: { viewModel.seek(to: $0) },
+                            onEditWord: { s, w, text in applyWordEdit(segmentIndex: s, wordIndex: w, newText: text) },
+                            onRestoreWord: { s, w in restoreWord(segmentIndex: s, wordIndex: w) },
+                            onRestoreSentence: { s in restoreSentence(segmentIndex: s) }
+                        )
                     } else {
                         AutoScrollingTextView(
                             text: plainDisplayText,
@@ -542,11 +574,27 @@ struct TranscriptionView: View {
                             }
                         }
 
-                        Text(utterance.text)
-                            .font(.system(size: fontSize))
-                            .foregroundColor(.textPrimary)
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        if let uWords = utterance.words, !uWords.isEmpty {
+                            WordFlowView(
+                                words: uWords,
+                                segmentIndex: 10_000 + (viewModel.diarizedUtterances.firstIndex(of: utterance) ?? 0),
+                                currentTime: viewModel.currentTime,
+                                fontSize: fontSize,
+                                isEditing: isEditingTranscript,
+                                showConfidenceHints: isEditingTranscript || showConfidenceHints,
+                                lowConfidenceThreshold: 0.5,
+                                onSeek: { viewModel.seek(to: $0) },
+                                onEditWord: { _, _ in },          // diarized word edit wired in Task 11
+                                onRestoreWord: { _ in },
+                                onRestoreSentence: { }
+                            )
+                        } else {
+                            Text(utterance.text)
+                                .font(.system(size: fontSize))
+                                .foregroundColor(.textPrimary)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                     }
                 }
             }
