@@ -257,8 +257,9 @@ class WhisperKitService {
                     
                     // Get timestamp settings from UserDefaults
                     let includeTimestamps = UserDefaults.standard.bool(forKey: "includeTimestamps")
-                    // Word timestamps are required for diarization's word-level merge.
-                    let wordTimestamps = UserDefaults.standard.bool(forKey: "wordTimestamps") || forceWordTimestamps
+                    // Always generate word timestamps locally — powers the synced/interactive transcript
+                    // and improves diarization. (forceWordTimestamps retained for callers/back-compat.)
+                    let wordTimestamps = true
                     
                     // Create decoding options
                     let decodeOptions = DecodingOptions(

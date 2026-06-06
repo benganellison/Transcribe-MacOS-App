@@ -1753,7 +1753,7 @@ class TranscriptionViewModel: ObservableObject {
             do {
                 // Stream transcription updates. Force word timestamps when the user
                 // opted into speaker identification — the merge needs word-level timing.
-                let needWords = UserDefaults.standard.bool(forKey: "identifySpeakers")
+                let needWords = true
                 for try await update in transcriptionService!.transcribe(fileURL: fileURL, forceWordTimestamps: needWords) {
                     await MainActor.run {
                         if update.progress < 0.15 && !update.isComplete {
