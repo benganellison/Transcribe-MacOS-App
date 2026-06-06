@@ -2189,17 +2189,31 @@ class TranscriptionViewModel: ObservableObject {
 }
 
 struct TranscriptionSegmentData: Codable, Equatable {
-    let start: Double
-    let end: Double
-    let text: String
-    let words: [WordTimestamp]?
+    var start: Double
+    var end: Double
+    var text: String
+    var words: [WordTimestamp]?
+    /// True when word timings inside this segment were interpolated after a
+    /// sentence rewrite (highlight is sentence-accurate, word-level is approximate).
+    /// Optional so older persisted metadata decodes (missing key → nil → false).
+    var timingApproximate: Bool?
 }
 
 struct WordTimestamp: Codable, Equatable {
-    let word: String
-    let start: Double
-    let end: Double
-    let confidence: Float
+    var word: String
+    var start: Double
+    var end: Double
+    var confidence: Float
+}
+
+extension TranscriptionSegmentData {
+    init(start: Double, end: Double, text: String, words: [WordTimestamp]?, timingApproximate: Bool? = nil) {
+        self.start = start
+        self.end = end
+        self.text = text
+        self.words = words
+        self.timingApproximate = timingApproximate
+    }
 }
 
 // MARK: - Auto-Scrolling Text View
