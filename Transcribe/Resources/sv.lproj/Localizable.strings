@@ -284,6 +284,7 @@
 /* Interactive transcript */
 "edit_transcript" = "Redigera transkription";
 "follow_playback" = "Följ uppspelning";
+"follow_playback_help" = "Rulla automatiskt så att ordet som sägs hålls synligt under uppspelning";
 "restore_word" = "Återställ ord";
 "restore_sentence" = "Återställ mening";
 "restore_all" = "Återställ allt";

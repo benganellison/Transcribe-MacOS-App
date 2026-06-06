@@ -103,7 +103,7 @@ struct TranscriptionView: View {
         }
         .alert(localized("unsaved_transcription"), isPresented: $showUnsavedChangesAlert) {
             Button(localized("copy_and_go_back"), role: nil) {
-                viewModel.copyToClipboard()
+                viewModel.copyToClipboard(speakerNames: speakerNames)
                 appState.showTranscriptionView = false
                 appState.currentTranscriptionURL = nil
             }
@@ -277,10 +277,14 @@ struct TranscriptionView: View {
             }
 
             if !viewModel.isTranscribing && hasWordTimings {
-                Toggle(isOn: $followPlayback) { Image(systemName: "arrow.down.to.line") }
-                    .toggleStyle(.button).help(localized("follow_playback"))
-                Toggle(isOn: $isEditingTranscript) { Image(systemName: "pencil") }
-                    .toggleStyle(.button).help(localized("edit_transcript"))
+                Toggle(isOn: $followPlayback) {
+                    Label(localized("follow_playback"), systemImage: "text.line.first.and.arrowtriangle.forward")
+                }
+                .toggleStyle(.button).help(localized("follow_playback_help"))
+                Toggle(isOn: $isEditingTranscript) {
+                    Label(localized("edit_transcript"), systemImage: "pencil")
+                }
+                .toggleStyle(.button).help(localized("edit_transcript"))
             }
 
             if viewModel.originalSegments != nil {
@@ -972,7 +976,7 @@ struct TranscriptionView: View {
                                     label: localized("export_transcription_txt"),
                                     enabled: !viewModel.transcribedText.isEmpty
                                 ) {
-                                    viewModel.exportTranscriptionAsText()
+                                    viewModel.exportTranscriptionAsText(speakerNames: speakerNames)
                                     showingExportPopover = false
                                 }
                                 
@@ -981,7 +985,7 @@ struct TranscriptionView: View {
                                     label: localized("export_transcription_md"),
                                     enabled: !viewModel.transcribedText.isEmpty
                                 ) {
-                                    viewModel.exportTranscriptionAsMarkdown()
+                                    viewModel.exportTranscriptionAsMarkdown(speakerNames: speakerNames)
                                     showingExportPopover = false
                                 }
                                 
@@ -1013,7 +1017,7 @@ struct TranscriptionView: View {
                         }
                         
                         // Copy button
-                        Button(action: { viewModel.copyToClipboard() }) {
+                        Button(action: { viewModel.copyToClipboard(speakerNames: speakerNames) }) {
                             HStack(spacing: 6) {
                                 Image(systemName: "doc.on.doc")
                                     .font(.system(size: 13))
@@ -2345,9 +2349,21 @@ class TranscriptionViewModel: ObservableObject {
         }
     }
     
-    func copyToClipboard() {
-        // Copy both transcription and processed text if available
-        var combined = transcribedText
+    /// Builds the copy/export text from the CURRENT state: speaker-labeled blocks
+    /// when diarized (reflecting renames + edits), otherwise the edited transcript.
+    func currentTranscriptText(speakerNames: [String: String] = [:]) -> String {
+        if !diarizedUtterances.isEmpty {
+            return diarizedUtterances.map { u in
+                let name = speakerNames[u.speakerID] ?? u.displayName
+                return "\(name): \(u.text)"
+            }.joined(separator: "\n\n")
+        }
+        return transcribedText
+    }
+
+    func copyToClipboard(speakerNames: [String: String] = [:]) {
+        // Copy the current (edited / diarized) transcription, plus processed text if any.
+        var combined = currentTranscriptText(speakerNames: speakerNames)
         if !processedText.isEmpty {
             combined += "\n\n---\n\n" + processedText
         }
@@ -2359,12 +2375,12 @@ class TranscriptionViewModel: ObservableObject {
         fileName.replacingOccurrences(of: ".\(fileURL.pathExtension)", with: "")
     }
     
-    func exportTranscriptionAsText() {
-        saveFile(content: transcribedText, defaultName: "\(baseName)_transcription.txt", contentType: .plainText)
+    func exportTranscriptionAsText(speakerNames: [String: String] = [:]) {
+        saveFile(content: currentTranscriptText(speakerNames: speakerNames), defaultName: "\(baseName)_transcription.txt", contentType: .plainText)
     }
-    
-    func exportTranscriptionAsMarkdown() {
-        let md = "# \(fileName)\n\n\(transcribedText)\n"
+
+    func exportTranscriptionAsMarkdown(speakerNames: [String: String] = [:]) {
+        let md = "# \(fileName)\n\n\(currentTranscriptText(speakerNames: speakerNames))\n"
         saveFile(content: md, defaultName: "\(baseName)_transcription.md", contentType: UTType(filenameExtension: "md") ?? .plainText)
     }
     

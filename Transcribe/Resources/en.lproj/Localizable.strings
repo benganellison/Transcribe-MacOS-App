@@ -284,6 +284,7 @@
 /* Interactive transcript */
 "edit_transcript" = "Edit transcript";
 "follow_playback" = "Follow playback";
+"follow_playback_help" = "Auto-scroll to keep the currently spoken word in view during playback";
 "restore_word" = "Restore word";
 "restore_sentence" = "Restore sentence";
 "restore_all" = "Restore all";
