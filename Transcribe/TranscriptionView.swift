@@ -219,6 +219,7 @@ struct TranscriptionView: View {
                 diarized: saved.diarizedUtterances ?? []
             )
             speakerNames = saved.speakerNames ?? [:]
+            viewModel.originalSegments = saved.originalTranscriptionSegments
             return
         }
 
@@ -231,6 +232,7 @@ struct TranscriptionView: View {
                 diarized: cached.diarizedUtterances ?? []
             )
             speakerNames = cached.speakerNames ?? [:]
+            viewModel.originalSegments = cached.originalSegments
             return
         }
 
@@ -279,6 +281,15 @@ struct TranscriptionView: View {
                     .toggleStyle(.button).help(localized("follow_playback"))
                 Toggle(isOn: $isEditingTranscript) { Image(systemName: "pencil") }
                     .toggleStyle(.button).help(localized("edit_transcript"))
+            }
+
+            if viewModel.originalSegments != nil {
+                Button(localized("restore_all")) {
+                    viewModel.restoreAll()
+                    persistAfterEdit()
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(.primaryAccent)
             }
 
             transcriptionStats
@@ -506,9 +517,35 @@ struct TranscriptionView: View {
         viewModel.segments.contains { ($0.words?.isEmpty == false) }
     }
 
-    private func applyWordEdit(segmentIndex: Int, wordIndex: Int, newText: String) { }
-    private func restoreWord(segmentIndex: Int, wordIndex: Int) { }
-    private func restoreSentence(segmentIndex: Int) { }
+    private func applyWordEdit(segmentIndex: Int, wordIndex: Int, newText: String) {
+        viewModel.editWord(segmentIndex: segmentIndex, wordIndex: wordIndex, newText: newText)
+        persistAfterEdit()
+    }
+
+    private func restoreWord(segmentIndex: Int, wordIndex: Int) {
+        viewModel.restoreWord(segmentIndex: segmentIndex, wordIndex: wordIndex)
+        persistAfterEdit()
+    }
+
+    private func restoreSentence(segmentIndex: Int) {
+        viewModel.restoreSentence(segmentIndex: segmentIndex)
+        persistAfterEdit()
+    }
+
+    private func persistAfterEdit() {
+        let model = UserDefaults.standard.string(forKey: "selectedTranscriptionModel") ?? ""
+        if let recordingID = appState.currentRecordingID {
+            recordingLibrary.updateTranscription(
+                recordingID: recordingID, text: viewModel.transcribedText,
+                segments: viewModel.segments, model: model)
+            recordingLibrary.updateOriginalSegments(recordingID: recordingID, segments: viewModel.originalSegments)
+        } else if let memoID = appState.currentVoiceMemoID {
+            recordingLibrary.cacheVoiceMemoTranscription(
+                id: memoID, text: viewModel.transcribedText, segments: viewModel.segments, model: model,
+                diarizedUtterances: viewModel.diarizedUtterances, speakerNames: speakerNames,
+                originalSegments: viewModel.originalSegments)
+        }
+    }
 
     private var transcriptionContent: some View {
         Group {
@@ -1657,6 +1694,7 @@ class TranscriptionViewModel: ObservableObject {
         }
     }
     @Published var segments: [TranscriptionSegmentData] = []
+    @Published var originalSegments: [TranscriptionSegmentData]? = nil
 
     // MARK: - Diarization
     @Published var diarizedUtterances: [DiarizedUtterance] = []
@@ -1740,12 +1778,68 @@ class TranscriptionViewModel: ObservableObject {
         errorMessage = nil
     }
 
+    /// Snapshots the unedited segments the first time an edit occurs.
+    func captureOriginalIfNeeded() {
+        if originalSegments == nil { originalSegments = segments }
+    }
+
+    /// Replaces a single word's text, keeping its timing; rebuilds transcribedText.
+    func editWord(segmentIndex: Int, wordIndex: Int, newText: String) {
+        guard segments.indices.contains(segmentIndex),
+              var words = segments[segmentIndex].words,
+              words.indices.contains(wordIndex) else { return }
+        let trimmed = newText.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        captureOriginalIfNeeded()
+        words[wordIndex].word = trimmed
+        segments[segmentIndex].words = words
+        segments[segmentIndex].text = words.map(\.word).joined(separator: " ")
+        transcribedText = TimedTranscript.rebuildText(from: segments)
+    }
+
+    /// Re-tokenizes a whole sentence (segment) edit via TimedTranscript reconciliation.
+    func editSentence(segmentIndex: Int, newText: String) {
+        guard segments.indices.contains(segmentIndex) else { return }
+        captureOriginalIfNeeded()
+        segments[segmentIndex] = TimedTranscript.reconcileSentence(segments[segmentIndex], newText: newText)
+        transcribedText = TimedTranscript.rebuildText(from: segments)
+    }
+
+    func restoreWord(segmentIndex: Int, wordIndex: Int) {
+        guard let original = originalSegments,
+              segments.indices.contains(segmentIndex),
+              var words = segments[segmentIndex].words,
+              words.indices.contains(wordIndex),
+              let originalWord = TimedTranscript.originalWord(in: original, atMidpointOf: words[wordIndex])
+        else { return }
+        words[wordIndex] = originalWord
+        segments[segmentIndex].words = words
+        segments[segmentIndex].text = words.map(\.word).joined(separator: " ")
+        transcribedText = TimedTranscript.rebuildText(from: segments)
+    }
+
+    func restoreSentence(segmentIndex: Int) {
+        guard let original = originalSegments,
+              segments.indices.contains(segmentIndex),
+              let originalSeg = TimedTranscript.originalSegment(in: original, overlapping: segments[segmentIndex])
+        else { return }
+        segments[segmentIndex] = originalSeg
+        transcribedText = TimedTranscript.rebuildText(from: segments)
+    }
+
+    func restoreAll() {
+        guard let original = originalSegments else { return }
+        segments = original
+        transcribedText = TimedTranscript.rebuildText(from: segments)
+    }
+
     func retranscribe() {
         // Reset all state for a fresh transcription
         transcribedText = ""
         wordCount = 0
         progress = 0
         segments = []
+        originalSegments = nil
         diarizedUtterances = []
         diarizationError = nil
         errorMessage = nil

@@ -29,4 +29,5 @@ struct VoiceMemoTranscription: Codable {
     /// older cache files (text-only) still decode.
     var diarizedUtterances: [DiarizedUtterance]?
     var speakerNames: [String: String]?
+    var originalSegments: [TranscriptionSegmentData]?
 }
