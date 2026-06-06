@@ -16,28 +16,37 @@ actor DiarizationMerger {
         guard !words.isEmpty else { return [] }
 
         var utterances: [DiarizedUtterance] = []
+        var currentWords: [[WordTimestamp]] = []   // parallel to utterances
         var lastSpeaker: String? = nil
+
+        func wt(_ word: Word) -> WordTimestamp {
+            WordTimestamp(word: word.text, start: word.start, end: word.end, confidence: 1.0)
+        }
 
         for word in words {
             let speaker = speakerLabel(for: word, in: speakers, fallback: lastSpeaker)
             lastSpeaker = speaker
 
             if let current = utterances.last, current.speakerID == speaker {
-                // Extend the current utterance with this word.
+                currentWords[currentWords.count - 1].append(wt(word))
+                let merged = currentWords[currentWords.count - 1]
                 utterances[utterances.count - 1] = DiarizedUtterance(
                     id: current.id,
                     speakerID: current.speakerID,
                     displayName: current.displayName,
                     text: current.text + " " + word.text,
                     startTime: current.startTime,
-                    endTime: word.end
+                    endTime: word.end,
+                    words: merged
                 )
             } else {
+                currentWords.append([wt(word)])
                 utterances.append(DiarizedUtterance(
                     speakerID: speaker,
                     text: word.text,
                     startTime: word.start,
-                    endTime: word.end
+                    endTime: word.end,
+                    words: [wt(word)]
                 ))
             }
         }

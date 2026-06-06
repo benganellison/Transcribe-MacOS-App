@@ -16,6 +16,9 @@ struct DiarizedUtterance: Identifiable, Equatable, Codable {
     var text: String
     let startTime: TimeInterval
     let endTime: TimeInterval
+    /// Per-word timings for this utterance, enabling word-level highlight/seek/edit
+    /// in the diarized view. Optional so older persisted utterances decode.
+    var words: [WordTimestamp]?
 
     init(
         id: UUID = UUID(),
@@ -23,7 +26,8 @@ struct DiarizedUtterance: Identifiable, Equatable, Codable {
         displayName: String? = nil,
         text: String,
         startTime: TimeInterval,
-        endTime: TimeInterval
+        endTime: TimeInterval,
+        words: [WordTimestamp]? = nil
     ) {
         self.id = id
         self.speakerID = speakerID
@@ -31,5 +35,6 @@ struct DiarizedUtterance: Identifiable, Equatable, Codable {
         self.text = text
         self.startTime = startTime
         self.endTime = endTime
+        self.words = words
     }
 }
