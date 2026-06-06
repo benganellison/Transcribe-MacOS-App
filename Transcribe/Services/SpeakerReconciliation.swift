@@ -63,13 +63,42 @@ enum SpeakerReconciliation {
         return regroupAdjacent(relabeled)
     }
 
-    /// Relabels a single utterance (by id) to `target`, then re-groups.
+    /// Relabels a single utterance (by id) to `target`. Deliberately does NOT
+    /// re-group: re-grouping would merge a manually-split turn back into its
+    /// neighbors before the user finishes reassigning the pieces. (Use `merge`
+    /// to coalesce a whole speaker.)
     static func reassign(_ utterances: [DiarizedUtterance], utteranceID: UUID, to target: String) -> [DiarizedUtterance] {
-        let relabeled = utterances.map { u -> DiarizedUtterance in
-            guard u.id == utteranceID else { return u }
-            return relabel(u, to: target)
+        utterances.map { u in
+            u.id == utteranceID ? relabel(u, to: target) : u
         }
-        return regroupAdjacent(relabeled)
+    }
+
+    /// Splits the utterance with `utteranceID` into two at `beforeWordIndex` (the
+    /// second piece starts at that word), keeping the same speaker and word timings.
+    /// No-op if the utterance/words aren't found or the index isn't an interior split
+    /// point (1..<wordCount). Used to break a turn the diarizer merged across speakers.
+    static func splitUtterance(_ utterances: [DiarizedUtterance], utteranceID: UUID, beforeWordIndex: Int) -> [DiarizedUtterance] {
+        guard let idx = utterances.firstIndex(where: { $0.id == utteranceID }) else { return utterances }
+        let u = utterances[idx]
+        guard let words = u.words, beforeWordIndex > 0, beforeWordIndex < words.count else { return utterances }
+        let firstWords = Array(words[..<beforeWordIndex])
+        let secondWords = Array(words[beforeWordIndex...])
+        let first = makeUtterance(speaker: u.speakerID, displayName: u.displayName, words: firstWords, fallback: u)
+        let second = makeUtterance(speaker: u.speakerID, displayName: u.displayName, words: secondWords, fallback: u)
+        var result = utterances
+        result.replaceSubrange(idx...idx, with: [first, second])
+        return result
+    }
+
+    private static func makeUtterance(speaker: String, displayName: String, words: [WordTimestamp], fallback: DiarizedUtterance) -> DiarizedUtterance {
+        DiarizedUtterance(
+            speakerID: speaker,
+            displayName: displayName,
+            text: words.map(\.word).joined(separator: " "),
+            startTime: words.first?.start ?? fallback.startTime,
+            endTime: words.last?.end ?? fallback.endTime,
+            words: words
+        )
     }
 
     private static func relabel(_ u: DiarizedUtterance, to target: String) -> DiarizedUtterance {

@@ -717,6 +717,10 @@ struct TranscriptionView: View {
                                 onRestoreSentence: {
                                     viewModel.restoreDiarizedSentence(utteranceIndex: uIndex)
                                     persistDiarizedAfterEdit()
+                                },
+                                onSplitTurn: { beforeWordIndex in
+                                    viewModel.splitDiarizedUtterance(id: utterance.id, beforeWordIndex: beforeWordIndex)
+                                    persistSpeakerChange()
                                 }
                             )
                         } else {
@@ -1897,6 +1901,15 @@ class TranscriptionViewModel: ObservableObject {
         guard !diarizedUtterances.isEmpty else { return }
         captureOriginalSpeakersIfNeeded()
         diarizedUtterances = SpeakerReconciliation.reassign(diarizedUtterances, utteranceID: id, to: target)
+    }
+
+    /// Splits a turn into two at a word boundary (the second piece starts at
+    /// `beforeWordIndex`), so a turn the diarizer merged across speakers can be
+    /// carved up and the pieces reassigned.
+    func splitDiarizedUtterance(id: UUID, beforeWordIndex: Int) {
+        guard !diarizedUtterances.isEmpty else { return }
+        captureOriginalSpeakersIfNeeded()
+        diarizedUtterances = SpeakerReconciliation.splitUtterance(diarizedUtterances, utteranceID: id, beforeWordIndex: beforeWordIndex)
     }
 
     /// Label for a brand-new speaker (used by "Assign this turn to → New speaker").

@@ -287,6 +287,7 @@
 "new_speaker" = "Ny talare";
 "restore_original_speakers" = "Återställ ursprungliga talare";
 "speaker_actions_help" = "Byt namn, slå samman eller omfördela denna talare";
+"split_turn_here" = "Dela inlägget här";
 
 /* Interactive transcript */
 "edit_transcript" = "Redigera transkription";

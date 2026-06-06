@@ -17,6 +17,8 @@ struct WordFlowView: View {
     let onEditSentence: (_ newText: String) -> Void
     let onRestoreWord: (_ wordIndex: Int) -> Void
     let onRestoreSentence: () -> Void
+    /// Split this turn before `wordIndex` (diarized view only; nil hides the action).
+    var onSplitTurn: ((_ beforeWordIndex: Int) -> Void)? = nil
 
     @State private var editingWordIndex: Int? = nil
     @State private var editText: String = ""
@@ -65,6 +67,9 @@ struct WordFlowView: View {
                     Button(localized("edit_sentence")) {
                         sentenceText = words.map(\.word).joined(separator: " ")
                         showSentenceEditor = true
+                    }
+                    if let onSplitTurn, index > 0 {
+                        Button(localized("split_turn_here")) { onSplitTurn(index) }
                     }
                     Divider()
                     Button(localized("restore_word")) { onRestoreWord(index) }
