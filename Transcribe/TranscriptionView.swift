@@ -1740,6 +1740,7 @@ class TranscriptionViewModel: ObservableObject {
 
     // MARK: - Diarization
     @Published var diarizedUtterances: [DiarizedUtterance] = []
+    @Published var originalDiarizedUtterances: [DiarizedUtterance]? = nil
     @Published var isDiarizing = false
     @Published var diarizationError: String?
     private let diarizationService = DiarizationService()
@@ -1823,6 +1824,35 @@ class TranscriptionViewModel: ObservableObject {
     /// Snapshots the unedited segments the first time an edit occurs.
     func captureOriginalIfNeeded() {
         if originalSegments == nil { originalSegments = segments }
+    }
+
+    /// Snapshots the diarizer's speaker assignment the first time the user changes it.
+    func captureOriginalSpeakersIfNeeded() {
+        if originalDiarizedUtterances == nil { originalDiarizedUtterances = diarizedUtterances }
+    }
+
+    // MARK: - Speaker Reconciliation
+
+    func mergeSpeaker(_ source: String, into target: String) {
+        guard source != target, !diarizedUtterances.isEmpty else { return }
+        captureOriginalSpeakersIfNeeded()
+        diarizedUtterances = SpeakerReconciliation.merge(diarizedUtterances, from: source, into: target)
+    }
+
+    func reassignUtterance(id: UUID, to target: String) {
+        guard !diarizedUtterances.isEmpty else { return }
+        captureOriginalSpeakersIfNeeded()
+        diarizedUtterances = SpeakerReconciliation.reassign(diarizedUtterances, utteranceID: id, to: target)
+    }
+
+    /// Label for a brand-new speaker (used by "Assign this turn to → New speaker").
+    func newSpeakerLabel() -> String {
+        SpeakerReconciliation.nextSpeakerLabel(in: diarizedUtterances)
+    }
+
+    func restoreOriginalSpeakers() {
+        guard let original = originalDiarizedUtterances else { return }
+        diarizedUtterances = original
     }
 
     /// Replaces a single word's text, keeping its timing; rebuilds transcribedText.
@@ -1925,6 +1955,7 @@ class TranscriptionViewModel: ObservableObject {
         progress = 0
         segments = []
         originalSegments = nil
+        originalDiarizedUtterances = nil
         diarizedUtterances = []
         diarizationError = nil
         errorMessage = nil
