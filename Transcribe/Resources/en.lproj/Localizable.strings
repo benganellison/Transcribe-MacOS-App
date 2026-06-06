@@ -282,7 +282,8 @@
 "speaker_range_help" = "Optional range, e.g. at least 3, at most 5. Leave blank for automatic. A range avoids over-splitting a speaker better than forcing an exact number.";
 
 /* Speaker reconciliation */
-"merge_speaker_into" = "Merge into";
+"merge_with_previous" = "Merge with previous turn";
+"merge_speaker_into" = "Merge entire speaker into";
 "assign_turn_to" = "Assign this turn to";
 "new_speaker" = "New speaker";
 "restore_original_speakers" = "Restore original speakers";

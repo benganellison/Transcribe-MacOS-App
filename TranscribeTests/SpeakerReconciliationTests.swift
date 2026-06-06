@@ -72,6 +72,29 @@ final class SpeakerReconciliationTests: XCTestCase {
         XCTAssertEqual(SpeakerReconciliation.splitUtterance([utt], utteranceID: utt.id, beforeWordIndex: 2), [utt])
     }
 
+    func testJoinWithPreviousCombinesTurns() {
+        let a = u("Bengt", "Det", 0, 1)
+        let b = u("Bengt", "blir la kris", 1, 3)
+        let result = SpeakerReconciliation.joinWithPrevious([a, b], utteranceID: b.id)
+        XCTAssertEqual(result.count, 1)
+        XCTAssertEqual(result[0].speakerID, "Bengt")
+        XCTAssertEqual(result[0].text, "Det blir la kris")
+        XCTAssertEqual(result[0].endTime, 3)
+        XCTAssertEqual(result[0].words?.count, 3)
+    }
+
+    func testJoinFirstUtteranceIsNoop() {
+        let a = u("Bengt", "Det", 0, 1)
+        XCTAssertEqual(SpeakerReconciliation.joinWithPrevious([a], utteranceID: a.id), [a])
+    }
+
+    func testMergeThreeSpeakersKeepsOthers() {
+        let utts = [u("Speaker 1", "a", 0, 1), u("Speaker 2", "b", 1, 2), u("Speaker 3", "c", 2, 3)]
+        let result = SpeakerReconciliation.merge(utts, from: "Speaker 3", into: "Speaker 1")
+        // Speaker 2 must survive — merging two of three speakers must not flatten everything.
+        XCTAssertEqual(Set(result.map(\.speakerID)), ["Speaker 1", "Speaker 2"])
+    }
+
     func testReassignDoesNotRegroupNeighbors() {
         // Two same-speaker turns; reassigning the first must NOT merge with the second.
         let a = u("Speaker 1", "a", 0, 1)

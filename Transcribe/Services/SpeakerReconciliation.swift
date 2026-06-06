@@ -90,6 +90,32 @@ enum SpeakerReconciliation {
         return result
     }
 
+    /// Joins the utterance with `utteranceID` into the immediately preceding utterance,
+    /// adopting the previous turn's speaker. Combines two adjacent turns into one
+    /// (the inverse of split). No-op if it's the first utterance or not found.
+    static func joinWithPrevious(_ utterances: [DiarizedUtterance], utteranceID: UUID) -> [DiarizedUtterance] {
+        guard let idx = utterances.firstIndex(where: { $0.id == utteranceID }), idx > 0 else { return utterances }
+        let prev = utterances[idx - 1]
+        let cur = utterances[idx]
+        let words = (prev.words ?? []) + (cur.words ?? [])
+        let text = [prev.text, cur.text]
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        let combined = DiarizedUtterance(
+            id: prev.id,
+            speakerID: prev.speakerID,
+            displayName: prev.displayName,
+            text: text,
+            startTime: prev.startTime,
+            endTime: cur.endTime,
+            words: words.isEmpty ? nil : words
+        )
+        var result = utterances
+        result.replaceSubrange((idx - 1)...idx, with: [combined])
+        return result
+    }
+
     private static func makeUtterance(speaker: String, displayName: String, words: [WordTimestamp], fallback: DiarizedUtterance) -> DiarizedUtterance {
         DiarizedUtterance(
             speakerID: speaker,

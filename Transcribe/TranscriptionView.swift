@@ -652,6 +652,12 @@ struct TranscriptionView: View {
                                     renamingSpeakerID = utterance.speakerID
                                     renameFieldText = speakerNames[utterance.speakerID] ?? utterance.displayName
                                 }
+                                if uIndex > 0 {
+                                    Button(localized("merge_with_previous")) {
+                                        viewModel.joinUtteranceWithPrevious(id: utterance.id)
+                                        persistSpeakerChange()
+                                    }
+                                }
                                 let others = SpeakerReconciliation.distinctSpeakers(in: viewModel.diarizedUtterances)
                                     .filter { $0 != utterance.speakerID }
                                 if !others.isEmpty {
@@ -1901,6 +1907,14 @@ class TranscriptionViewModel: ObservableObject {
         guard !diarizedUtterances.isEmpty else { return }
         captureOriginalSpeakersIfNeeded()
         diarizedUtterances = SpeakerReconciliation.reassign(diarizedUtterances, utteranceID: id, to: target)
+    }
+
+    /// Joins a turn into the immediately preceding turn (adopting the previous
+    /// speaker) — combines two adjacent turns the diarizer split apart.
+    func joinUtteranceWithPrevious(id: UUID) {
+        guard !diarizedUtterances.isEmpty else { return }
+        captureOriginalSpeakersIfNeeded()
+        diarizedUtterances = SpeakerReconciliation.joinWithPrevious(diarizedUtterances, utteranceID: id)
     }
 
     /// Splits a turn into two at a word boundary (the second piece starts at

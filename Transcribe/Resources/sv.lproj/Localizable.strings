@@ -282,7 +282,8 @@
 "speaker_range_help" = "Valfritt intervall, t.ex. minst 3, högst 5. Lämna tomt för automatiskt. Ett intervall undviker att en talare delas upp för mycket bättre än att tvinga ett exakt antal.";
 
 /* Speaker reconciliation */
-"merge_speaker_into" = "Slå samman med";
+"merge_with_previous" = "Slå ihop med föregående inlägg";
+"merge_speaker_into" = "Slå samman hela talaren med";
 "assign_turn_to" = "Tilldela detta inlägg till";
 "new_speaker" = "Ny talare";
 "restore_original_speakers" = "Återställ ursprungliga talare";
