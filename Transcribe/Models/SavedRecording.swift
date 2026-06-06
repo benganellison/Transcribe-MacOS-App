@@ -33,6 +33,8 @@ struct SavedRecording: Identifiable, Codable, Equatable {
     var transcriptionSegments: [TranscriptionSegmentData]?
     /// Immutable snapshot of the unedited transcription segments, for per-element restore.
     var originalTranscriptionSegments: [TranscriptionSegmentData]?
+    /// Snapshot of the diarizer's original speaker assignment, for "Restore original speakers".
+    var originalDiarizedUtterances: [DiarizedUtterance]?
     /// Speaker-labeled turns produced by diarization. Optional so older metadata decodes.
     var diarizedUtterances: [DiarizedUtterance]?
     /// User/LLM speaker-name overrides keyed by speaker ID, e.g. ["Speaker 1": "Anna"].
@@ -56,6 +58,7 @@ struct SavedRecording: Identifiable, Codable, Equatable {
         transcribedAt: Date? = nil,
         transcriptionSegments: [TranscriptionSegmentData]? = nil,
         originalTranscriptionSegments: [TranscriptionSegmentData]? = nil,
+        originalDiarizedUtterances: [DiarizedUtterance]? = nil,
         diarizedUtterances: [DiarizedUtterance]? = nil,
         speakerNames: [String: String]? = nil,
         source: RecordingSource,
@@ -77,6 +80,7 @@ struct SavedRecording: Identifiable, Codable, Equatable {
         self.transcribedAt = transcribedAt
         self.transcriptionSegments = transcriptionSegments
         self.originalTranscriptionSegments = originalTranscriptionSegments
+        self.originalDiarizedUtterances = originalDiarizedUtterances
         self.diarizedUtterances = diarizedUtterances
         self.speakerNames = speakerNames
         self.source = source

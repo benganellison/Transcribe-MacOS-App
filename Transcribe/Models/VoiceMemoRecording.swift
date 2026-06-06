@@ -30,4 +30,5 @@ struct VoiceMemoTranscription: Codable {
     var diarizedUtterances: [DiarizedUtterance]?
     var speakerNames: [String: String]?
     var originalSegments: [TranscriptionSegmentData]?
+    var originalDiarizedUtterances: [DiarizedUtterance]?
 }

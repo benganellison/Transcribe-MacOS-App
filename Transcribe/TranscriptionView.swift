@@ -221,6 +221,7 @@ struct TranscriptionView: View {
             )
             speakerNames = saved.speakerNames ?? [:]
             viewModel.originalSegments = saved.originalTranscriptionSegments
+            viewModel.originalDiarizedUtterances = saved.originalDiarizedUtterances
             return
         }
 
@@ -234,6 +235,7 @@ struct TranscriptionView: View {
             )
             speakerNames = cached.speakerNames ?? [:]
             viewModel.originalSegments = cached.originalSegments
+            viewModel.originalDiarizedUtterances = cached.originalDiarizedUtterances
             return
         }
 
@@ -292,6 +294,15 @@ struct TranscriptionView: View {
                 Button(localized("restore_all")) {
                     viewModel.restoreAll()
                     persistAfterEdit()
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(.primaryAccent)
+            }
+
+            if viewModel.originalDiarizedUtterances != nil {
+                Button(localized("restore_original_speakers")) {
+                    viewModel.restoreOriginalSpeakers()
+                    persistSpeakerChange()
                 }
                 .buttonStyle(.plain)
                 .foregroundColor(.primaryAccent)
@@ -573,6 +584,22 @@ struct TranscriptionView: View {
         }
     }
 
+    private func persistSpeakerChange() {
+        if let recordingID = appState.currentRecordingID {
+            recordingLibrary.updateDiarization(
+                recordingID: recordingID, utterances: viewModel.diarizedUtterances, speakerNames: speakerNames)
+            recordingLibrary.updateOriginalDiarization(
+                recordingID: recordingID, utterances: viewModel.originalDiarizedUtterances)
+        } else if let memoID = appState.currentVoiceMemoID {
+            recordingLibrary.cacheVoiceMemoTranscription(
+                id: memoID, text: viewModel.transcribedText, segments: viewModel.segments,
+                model: UserDefaults.standard.string(forKey: "selectedTranscriptionModel") ?? "",
+                diarizedUtterances: viewModel.diarizedUtterances, speakerNames: speakerNames,
+                originalSegments: viewModel.originalSegments,
+                originalDiarizedUtterances: viewModel.originalDiarizedUtterances)
+        }
+    }
+
     private var transcriptionContent: some View {
         Group {
             if !viewModel.transcribedText.isEmpty {
@@ -620,16 +647,43 @@ struct TranscriptionView: View {
                 ForEach(Array(viewModel.diarizedUtterances.enumerated()), id: \.element.id) { uIndex, utterance in
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 6) {
-                            Button {
-                                renamingSpeakerID = utterance.speakerID
-                                renameFieldText = speakerNames[utterance.speakerID] ?? utterance.displayName
+                            Menu {
+                                Button(localized("rename_speaker_title")) {
+                                    renamingSpeakerID = utterance.speakerID
+                                    renameFieldText = speakerNames[utterance.speakerID] ?? utterance.displayName
+                                }
+                                let others = SpeakerReconciliation.distinctSpeakers(in: viewModel.diarizedUtterances)
+                                    .filter { $0 != utterance.speakerID }
+                                if !others.isEmpty {
+                                    Menu(localized("merge_speaker_into")) {
+                                        ForEach(others, id: \.self) { target in
+                                            Button(speakerNames[target] ?? target) {
+                                                viewModel.mergeSpeaker(utterance.speakerID, into: target)
+                                                persistSpeakerChange()
+                                            }
+                                        }
+                                    }
+                                }
+                                Menu(localized("assign_turn_to")) {
+                                    ForEach(others, id: \.self) { target in
+                                        Button(speakerNames[target] ?? target) {
+                                            viewModel.reassignUtterance(id: utterance.id, to: target)
+                                            persistSpeakerChange()
+                                        }
+                                    }
+                                    Button(localized("new_speaker")) {
+                                        viewModel.reassignUtterance(id: utterance.id, to: viewModel.newSpeakerLabel())
+                                        persistSpeakerChange()
+                                    }
+                                }
                             } label: {
                                 Text(speakerNames[utterance.speakerID] ?? utterance.displayName)
                                     .font(.system(size: max(11, fontSize - 2), weight: .semibold))
                                     .foregroundColor(.primaryAccent)
                             }
-                            .buttonStyle(.plain)
-                            .help(localized("rename_speaker_title"))
+                            .menuStyle(.borderlessButton)
+                            .fixedSize()
+                            .help(localized("speaker_actions_help"))
 
                             if showTimestamps {
                                 Text("[\(formatTime(utterance.startTime))]")

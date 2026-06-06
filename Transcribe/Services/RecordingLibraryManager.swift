@@ -208,6 +208,15 @@ class RecordingLibraryManager: ObservableObject {
         savedRecordings[index] = updated
     }
 
+    func updateOriginalDiarization(recordingID: UUID, utterances: [DiarizedUtterance]?) {
+        guard let index = savedRecordings.firstIndex(where: { $0.id == recordingID }) else { return }
+        var updated = savedRecordings[index]
+        updated.originalDiarizedUtterances = utterances
+        updated.updatedAt = Date()
+        guard writeMetadata(updated) else { return }
+        savedRecordings[index] = updated
+    }
+
     /// Looks up a saved recording by ID (e.g. to reload a cached transcription on open).
     func recording(id: UUID) -> SavedRecording? {
         savedRecordings.first(where: { $0.id == id })
@@ -234,7 +243,8 @@ class RecordingLibraryManager: ObservableObject {
         model: String,
         diarizedUtterances: [DiarizedUtterance]? = nil,
         speakerNames: [String: String]? = nil,
-        originalSegments: [TranscriptionSegmentData]? = nil
+        originalSegments: [TranscriptionSegmentData]? = nil,
+        originalDiarizedUtterances: [DiarizedUtterance]? = nil
     ) {
         let dir = voiceMemoTranscriptionsDirectory()
         try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -246,7 +256,8 @@ class RecordingLibraryManager: ObservableObject {
             date: Date(),
             diarizedUtterances: diarizedUtterances,
             speakerNames: speakerNames,
-            originalSegments: originalSegments
+            originalSegments: originalSegments,
+            originalDiarizedUtterances: originalDiarizedUtterances
         )
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
