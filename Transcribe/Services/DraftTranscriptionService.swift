@@ -38,9 +38,11 @@ final class DraftTranscriptionService {
         try await prepare()
         guard let manager else { throw DraftError.modelLoadFailed("manager nil") }
         do {
-            let result = try await manager.transcribe(fileURL, source: .system)
-            let tokens = (result.tokenTimings ?? []).map {
-                ParakeetDraftParser.Token(text: $0.token, start: $0.startTime, end: $0.endTime, confidence: $0.confidence)
+            // FluidAudio's TDT transcribe needs a decoder state (inout); language nil = auto-detect.
+            var decoderState = try TdtDecoderState()
+            let result = try await manager.transcribe(fileURL, decoderState: &decoderState, language: nil)
+            let tokens = (result.tokenTimings ?? []).map { timing in
+                ParakeetDraftParser.Token(text: timing.token, start: timing.startTime, end: timing.endTime, confidence: timing.confidence)
             }
             let words = ParakeetDraftParser.tokensToWords(tokens)
             if words.isEmpty {
