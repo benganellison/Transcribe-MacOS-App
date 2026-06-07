@@ -16,8 +16,11 @@ in window by window.
 
 ## Decisions (from brainstorming)
 
-- **Draft engine:** FluidAudio **Parakeet TDT v3** (fast, 25 European languages incl.
-  Swedish; confirm Swedish at implementation).
+- **Draft engine:** FluidAudio **Parakeet TDT v3**. Confirmed from FluidAudio/NVIDIA
+  sources: Swedish (`sv`) is among the 25 supported European languages; the model
+  **auto-detects language** (no language config needed); **~120× real-time** on M4 Pro
+  (1 min ≈ 0.5s); `ASRResult` provides **`tokenTimings`** (+ `buildWordTimings`) so
+  **word-level timings are available** for the diarized draft and splice boundary.
 - **Trigger:** setting **"Fast draft for long recordings"** (default on) + a
   **duration threshold** (default 5 min). Files ≥ threshold get the draft pass;
   shorter ones go straight to Whisper streaming (already fast enough).
@@ -51,10 +54,11 @@ On Whisper completion → full accurate transcript with word timings → interac
 ## Components (small, isolated)
 
 - **`DraftTranscriptionService.swift`** (`@MainActor`) — wraps FluidAudio
-  `AsrManager` (Parakeet `v3` via `AsrModels.downloadAndLoad(version: .v3)`), lazy
-  model download mirroring WhisperKit/diarization. `transcribe(fileURL:) async throws
-  -> [TranscriptionSegmentData]` (with word/token timings when available). The ONLY
-  file importing FluidAudio's ASR types.
+  `AsrManager` (Parakeet `v3` via `AsrModels.downloadAndLoad(version: .v3)`, then
+  `transcribe(url, source:)`), lazy model download mirroring WhisperKit/diarization.
+  Maps `ASRResult.tokenTimings` → `buildWordTimings` → our `WordTimestamp`, returning
+  `transcribe(fileURL:) async throws -> [TranscriptionSegmentData]` with word timings.
+  The ONLY file importing FluidAudio's ASR types.
 - **`DraftSplice.swift`** — pure, unit-tested: `tailDraft(_ draft: [TranscriptionSegmentData], after t: TimeInterval) -> [TranscriptionSegmentData]`
   and the combine helper that yields the displayed segments from
   (whisper-covered, draft-tail). No UI, no audio.
@@ -86,8 +90,6 @@ On Whisper completion → full accurate transcript with word timings → interac
 
 - **Parakeet unavailable / draft fails** → skip the draft pass, go straight to Whisper
   streaming (today's behavior). The feature is purely additive.
-- **Parakeet lacks usable word timings** → draft renders at segment granularity;
-  diarized labels on the draft fall back to segment-level (or wait for Whisper).
 - **Diarization disabled or fails** → plain transcript; draft/refine still work.
 - **Cancel / Re-transcribe** → all three tracks stop.
 
