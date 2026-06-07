@@ -301,3 +301,9 @@
 "auto_name_prompt_label" = "Auto-name with AI — prompt";
 "auto_name_prompt_help" = "The instruction sent to the LLM when naming speakers from the transcript.";
 "reset_to_default" = "Reset to default";
+
+/* Fast draft */
+"fast_draft_toggle" = "Fast draft for long recordings";
+"fast_draft_help" = "Show an instant draft (Parakeet) for long files while the accurate transcription is prepared.";
+"fast_draft_threshold" = "Minimum length (minutes)";
+"draft_refining" = "Draft — refining with Whisper…";

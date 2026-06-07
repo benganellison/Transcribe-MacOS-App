@@ -301,3 +301,9 @@
 "auto_name_prompt_label" = "Namnge med AI — prompt";
 "auto_name_prompt_help" = "Instruktionen som skickas till språkmodellen när talare namnges utifrån transkriptionen.";
 "reset_to_default" = "Återställ till standard";
+
+/* Fast draft */
+"fast_draft_toggle" = "Snabbutkast för långa inspelningar";
+"fast_draft_help" = "Visa ett direkt utkast (Parakeet) för långa filer medan den noggranna transkriptionen förbereds.";
+"fast_draft_threshold" = "Minsta längd (minuter)";
+"draft_refining" = "Utkast — förbättras med Whisper…";
