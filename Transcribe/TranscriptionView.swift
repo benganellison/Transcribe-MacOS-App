@@ -275,6 +275,12 @@ struct TranscriptionView: View {
                 AccentSpinner(size: 16, lineWidth: 2)
             }
 
+            if viewModel.isShowingDraft {
+                Text(localized("draft_refining"))
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.textTertiary)
+            }
+
             if !viewModel.transcribedText.isEmpty && !viewModel.isTranscribing {
                 diarizationMenuButton
             }
@@ -1802,6 +1808,12 @@ class TranscriptionViewModel: ObservableObject {
     @Published var segments: [TranscriptionSegmentData] = []
     @Published var originalSegments: [TranscriptionSegmentData]? = nil
 
+    // MARK: - Fast draft (Parakeet)
+    @Published var draftSegments: [TranscriptionSegmentData] = []
+    @Published var isShowingDraft = false
+    private var cachedSpeakerSegments: [SpeakerSegment]? = nil
+    private let draftService = DraftTranscriptionService()
+
     // MARK: - Diarization
     @Published var diarizedUtterances: [DiarizedUtterance] = []
     @Published var originalDiarizedUtterances: [DiarizedUtterance]? = nil
@@ -2053,7 +2065,10 @@ class TranscriptionViewModel: ObservableObject {
         singleFileProgress = 0
         isProcessingChunks = false
         failedChunks = []
-        
+        draftSegments = []
+        isShowingDraft = false
+        cachedSpeakerSegments = nil
+
         // Start fresh
         startTranscription()
     }
@@ -2078,7 +2093,30 @@ class TranscriptionViewModel: ObservableObject {
     
     private func startLocalTranscription() {
         statusMessage = localized("processing_local_model")
-        
+
+        // Fast draft: for long files, show a quick Parakeet pass immediately and
+        // refine it front-to-back as Whisper streams in. Draft + diarization are
+        // local-only features, so they live on the WhisperKit path.
+        let draftEnabled = UserDefaults.standard.bool(forKey: "fastDraftEnabled")
+        let thresholdSec = UserDefaults.standard.double(forKey: "fastDraftThresholdMinutes") * 60
+        if draftEnabled && duration >= thresholdSec {
+            isShowingDraft = true
+            statusMessage = localized("draft_refining")
+            Task { @MainActor in
+                if let segs = try? await draftService.transcribe(fileURL: fileURL), isShowingDraft {
+                    draftSegments = segs
+                    refreshDraftDisplay()
+                    await applyDiarizationIfPossible()
+                }
+            }
+            if UserDefaults.standard.bool(forKey: "identifySpeakers") {
+                Task { @MainActor in
+                    cachedSpeakerSegments = try? await diarizationService.diarize(fileURL: fileURL)
+                    await applyDiarizationIfPossible()
+                }
+            }
+        }
+
         // All local models now use WhisperKit (streaming)
         // This includes OpenAI models and KB CoreML models
         startWhisperKitTranscription()
@@ -2101,10 +2139,19 @@ class TranscriptionViewModel: ObservableObject {
                             self.statusMessage = update.text
                         } else {
                             // Actual transcription content
-                            self.transcribedText = update.text
+                            if self.isShowingDraft && !self.draftSegments.isEmpty {
+                                // Splice: accurate Whisper text up to coveredUntil,
+                                // draft tail beyond it.
+                                self.transcribedText = DraftSplice.combinedText(
+                                    whisperText: update.text,
+                                    draft: self.draftSegments,
+                                    coveredUntil: update.coveredUntil)
+                            } else {
+                                self.transcribedText = update.text
+                            }
                             self.progress = update.progress
                             self.segments = update.segments
-                            self.wordCount = update.text.split(separator: " ").count
+                            self.wordCount = self.transcribedText.split(separator: " ").count
                             self.statusMessage = ""
                             
                             // Start transcription timer on first real content
@@ -2119,6 +2166,16 @@ class TranscriptionViewModel: ObservableObject {
                         }
                         
                         if update.isComplete {
+                            // Whisper finished — drop the draft entirely. The
+                            // final update already set segments/transcribedText to
+                            // the accurate result; ensure no spliced draft tail
+                            // lingers.
+                            if self.isShowingDraft {
+                                self.isShowingDraft = false
+                                self.draftSegments = []
+                                self.transcribedText = update.text
+                                self.wordCount = update.text.split(separator: " ").count
+                            }
                             self.finishTranscription()
                         }
                     }
@@ -2353,7 +2410,13 @@ class TranscriptionViewModel: ObservableObject {
 
         // Auto-run diarization when the user opted in via Settings.
         if UserDefaults.standard.bool(forKey: "identifySpeakers") {
-            Task { await self.diarize() }
+            if cachedSpeakerSegments != nil {
+                // Draft path already clustered speakers; just re-merge against the
+                // accurate final words instead of re-running diarization.
+                Task { @MainActor in await self.applyDiarizationIfPossible() }
+            } else {
+                Task { await self.diarize() }
+            }
         }
     }
 
@@ -2399,6 +2462,24 @@ class TranscriptionViewModel: ObservableObject {
         } catch {
             self.diarizationError = error.localizedDescription
         }
+    }
+
+    /// Renders the current draft as the full transcript (no Whisper text yet).
+    private func refreshDraftDisplay() {
+        transcribedText = DraftSplice.combinedText(whisperText: "", draft: draftSegments, coveredUntil: 0)
+        wordCount = transcribedText.split(separator: " ").count
+    }
+
+    /// Diarize once, merge twice: merge the cached speaker segments with whatever
+    /// word-timed transcript is current (final segments if Whisper is done, else draft).
+    private func applyDiarizationIfPossible() async {
+        guard let speakers = cachedSpeakerSegments else { return }
+        let source = (!isShowingDraft && !segments.isEmpty) ? segments : draftSegments
+        let words: [DiarizationMerger.Word] = source.flatMap { seg in
+            (seg.words ?? []).map { DiarizationMerger.Word(text: $0.word, start: $0.start, end: $0.end) }
+        }
+        guard !words.isEmpty else { return }
+        diarizedUtterances = await diarizationMerger.merge(words: words, speakers: speakers)
     }
 
     private func handleTranscriptionError(_ error: Error) {
