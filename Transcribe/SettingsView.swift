@@ -141,6 +141,8 @@ struct GeneralSettingsView: View {
     @StateObject private var localizationManager = LocalizationManager.shared
     @AppStorage("identifySpeakers") private var identifySpeakers = false
     @AppStorage("speakerNamingPrompt") private var speakerNamingPrompt: String = LLMService.defaultSpeakerNamingPrompt
+    @AppStorage("fastDraftEnabled") private var fastDraftEnabled = true
+    @AppStorage("fastDraftThresholdMinutes") private var fastDraftThresholdMinutes: Double = 5
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -240,6 +242,37 @@ struct GeneralSettingsView: View {
                             .font(.system(size: 12))
                             .foregroundColor(.primaryAccent)
                             .buttonStyle(.plain)
+                        }
+                    }
+                }
+
+                // Fast draft for long recordings
+                SettingsCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Toggle(isOn: $fastDraftEnabled) {
+                            Label {
+                                Text(localized("fast_draft_toggle"))
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundColor(.textPrimary)
+                            } icon: {
+                                Image(systemName: "hare.fill")
+                                    .font(.system(size: 18))
+                                    .foregroundStyle(LinearGradient.accentGradient)
+                            }
+                        }
+                        .toggleStyle(.switch)
+                        .tint(.primaryAccent)
+
+                        Text(localized("fast_draft_help"))
+                            .font(.system(size: 12))
+                            .foregroundColor(.textSecondary)
+
+                        if fastDraftEnabled {
+                            Stepper(value: $fastDraftThresholdMinutes, in: 1...30, step: 1) {
+                                Text("\(localized("fast_draft_threshold")): \(Int(fastDraftThresholdMinutes))")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.textSecondary)
+                            }
                         }
                     }
                 }

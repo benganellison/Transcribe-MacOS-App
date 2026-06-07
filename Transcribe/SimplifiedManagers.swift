@@ -106,6 +106,10 @@ class SettingsManager: ObservableObject {
     // Speaker auto-naming (diarization): editable LLM prompt, seeded from the built-in default
     @AppStorage("speakerNamingPrompt") var speakerNamingPrompt: String = LLMService.defaultSpeakerNamingPrompt
 
+    // Fast draft for long recordings (instant Parakeet draft while Whisper refines)
+    @AppStorage("fastDraftEnabled") var fastDraftEnabled: Bool = true
+    @AppStorage("fastDraftThresholdMinutes") var fastDraftThresholdMinutes: Double = 5
+
     // Recording settings
     @AppStorage("recordingQuality") var recordingQuality: String = "high"
     @AppStorage("enableNoiseReduction") var enableNoiseReduction: Bool = true
