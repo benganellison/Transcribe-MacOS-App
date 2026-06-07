@@ -7,6 +7,7 @@ struct TranscriptionUpdate {
     let progress: Double
     let segments: [TranscriptionSegmentData]
     let isComplete: Bool
+    var coveredUntil: TimeInterval = 0
 }
 
 @MainActor

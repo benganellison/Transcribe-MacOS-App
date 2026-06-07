@@ -313,7 +313,8 @@ class WhisperKitService {
                             text: fullText,
                             progress: 1.0,
                             segments: finalSegments,
-                            isComplete: true
+                            isComplete: true,
+                            coveredUntil: finalSegments.last.map { $0.end } ?? 0
                         ))
                     } else {
                         continuation.yield(TranscriptionUpdate(
@@ -401,7 +402,8 @@ private final class StreamingCallbackState: @unchecked Sendable {
                 text: fullText.isEmpty ? "Transkriberar..." : fullText,
                 progress: estimatedProgress,
                 segments: [],
-                isComplete: false
+                isComplete: false,
+                coveredUntil: Double(completedSegments.count) * 30.0
             ))
         }
         
