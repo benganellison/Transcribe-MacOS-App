@@ -129,7 +129,52 @@ class SettingsManager: ObservableObject {
     // Default model and output format as simple strings
     @AppStorage("defaultModel") var defaultModel: String = "kb_whisper-small-coreml"
     @AppStorage("defaultOutputFormat") var defaultOutputFormat: String = "txt"
-    
+
+    /// Canonical default values for every @AppStorage-backed setting, registered once
+    /// at launch (`TranscribeApp.init`).
+    ///
+    /// `@AppStorage` does NOT persist its inline default — it only writes to
+    /// UserDefaults when a value is actually changed. Code that reads these keys via
+    /// raw `UserDefaults.standard.bool/double/string(forKey:)` (e.g. the transcription
+    /// view-model, which isn't a SwiftUI `View` and can't use `@AppStorage`) therefore
+    /// gets Foundation's fallback for an *unset* key (`false`/`0`/`""`) instead of the
+    /// intended default. That's why the fast draft (default `true`) and speaker
+    /// identification silently never ran. Registering defaults makes both `@AppStorage`
+    /// and raw reads agree. Keep this in sync with the `@AppStorage` declarations above.
+    nonisolated static func registerDefaultSettings() {
+        UserDefaults.standard.register(defaults: [
+            "defaultLanguage": "sv",
+            "enableAutoLanguageDetection": true,
+            "enableTimestamps": true,
+            "preferredLLMProvider": "ollama",
+            "enableLLMEnhancement": false,
+            "autoSaveTranscriptions": true,
+            "transcriptionSaveLocation": "",
+            "selectedBergetLLMModel": "meta-llama/Llama-3.3-70B-Instruct",
+            "ollamaHost": "http://127.0.0.1:11434",
+            "selectedOllamaModel": "",
+            "speakerNamingPrompt": LLMService.defaultSpeakerNamingPrompt,
+            "fastDraftEnabled": true,
+            "fastDraftThresholdMinutes": 5.0,
+            // Speaker diarization runs automatically after transcription by default.
+            "identifySpeakers": true,
+            "recordingQuality": "high",
+            "enableNoiseReduction": true,
+            "enableSilenceTrimming": true,
+            "maxRecordingDuration": 14400,
+            "showStatusBarIcon": true,
+            "launchAtStartup": false,
+            "minimizeToStatusBar": false,
+            "enableAnalytics": false,
+            "localOnlyMode": false,
+            "clearHistoryOnQuit": false,
+            "defaultModel": "kb_whisper-small-coreml",
+            "selectedTranscriptionModel": "kb_whisper-small-coreml",
+            "defaultOutputFormat": "txt",
+            "appColorScheme": "dark",
+        ])
+    }
+
     init() {
         // Migrate API key from UserDefaults to Keychain if needed
         if let legacyKey = UserDefaults.standard.string(forKey: "bergetAPIKey"), !legacyKey.isEmpty {

@@ -9,6 +9,13 @@ struct TranscribeApp: App {
     @StateObject private var recordingLibrary = RecordingLibraryManager()
     @AppStorage("appColorScheme") private var appColorScheme: String = "dark"
 
+    init() {
+        // Register @AppStorage defaults before any view-model or service reads them
+        // raw via UserDefaults — otherwise unset keys (fast draft, identify speakers)
+        // fall back to false and those features silently never run.
+        SettingsManager.registerDefaultSettings()
+    }
+
     private var preferredScheme: ColorScheme? {
         switch appColorScheme {
         case "dark": return .dark

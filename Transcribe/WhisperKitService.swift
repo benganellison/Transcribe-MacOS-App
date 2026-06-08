@@ -255,8 +255,10 @@ class WhisperKitService {
                     // Get language code for transcription
                     let languageCode = language ?? "auto"
                     
-                    // Get timestamp settings from UserDefaults
-                    let includeTimestamps = UserDefaults.standard.bool(forKey: "includeTimestamps")
+                    // Get timestamp settings from UserDefaults. Read the key the Settings
+                    // toggle actually writes ("enableTimestamps"); the old "includeTimestamps"
+                    // key had no writer, so this setting silently never took effect.
+                    let includeTimestamps = UserDefaults.standard.bool(forKey: "enableTimestamps")
                     // Always generate word timestamps locally — powers the synced/interactive transcript
                     // and improves diarization. (forceWordTimestamps retained for callers/back-compat.)
                     let wordTimestamps = true

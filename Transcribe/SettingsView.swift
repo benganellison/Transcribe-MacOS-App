@@ -139,7 +139,7 @@ struct SettingsView: View {
 struct GeneralSettingsView: View {
     @EnvironmentObject var settingsManager: SettingsManager
     @StateObject private var localizationManager = LocalizationManager.shared
-    @AppStorage("identifySpeakers") private var identifySpeakers = false
+    @AppStorage("identifySpeakers") private var identifySpeakers = true
     @AppStorage("speakerNamingPrompt") private var speakerNamingPrompt: String = LLMService.defaultSpeakerNamingPrompt
     @AppStorage("fastDraftEnabled") private var fastDraftEnabled = true
     @AppStorage("fastDraftThresholdMinutes") private var fastDraftThresholdMinutes: Double = 5
