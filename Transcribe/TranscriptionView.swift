@@ -1806,8 +1806,10 @@ class TranscriptionViewModel: ObservableObject {
     private var cachedSpeakerSegments: [SpeakerSegment]? = nil
     private let draftService = DraftTranscriptionService()
     /// Covered-time of the last live diarization re-merge, to throttle reflow during streaming.
-    private var lastLiveDiarizeUntil: TimeInterval = 0
-    private let liveDiarizeIntervalSeconds: TimeInterval = 8
+    /// Wall-time throttle for the live diarized refine so it fills in continuously
+    /// (as Whisper text flows) without re-rendering on every 0.2s callback.
+    private var lastRefineAt: Date = .distantPast
+    private let refineMinInterval: TimeInterval = 0.4
 
     // MARK: - Diarization
     @Published var diarizedUtterances: [DiarizedUtterance] = []
@@ -2070,7 +2072,7 @@ class TranscriptionViewModel: ObservableObject {
         isShowingDraft = false
         isRefiningWithWhisper = false
         cachedSpeakerSegments = nil
-        lastLiveDiarizeUntil = 0
+        lastRefineAt = .distantPast
 
         // Start fresh
         startTranscription()
@@ -2176,23 +2178,24 @@ class TranscriptionViewModel: ObservableObject {
                             self.wordCount = self.transcribedText.split(separator: " ").count
                             self.statusMessage = ""
 
-                            // Progressive refinement: splice accurate Whisper words into
-                            // the existing speaker turns in place (blue→white), keeping
-                            // turn identity, speaker edits, and locked words. Throttled by
-                            // covered-time. Turn ids are stable, so no scroll reflow.
+                            // Progressive refinement: splice the accurate Whisper text
+                            // (completed + in-progress windows) into the existing speaker
+                            // turns in place (blue→white), keeping turn identity, speaker
+                            // edits, and locked words. Per-word timing is approximate during
+                            // streaming (no Whisper word timings yet) and exact at completion.
+                            // Wall-time throttled so it fills in continuously without
+                            // re-rendering on every 0.2s callback. Stable ids → no reflow.
                             if !self.diarizedUtterances.isEmpty,
-                               update.coveredUntil - self.lastLiveDiarizeUntil >= self.liveDiarizeIntervalSeconds {
-                                self.lastLiveDiarizeUntil = update.coveredUntil
-                                // Whisper streams accurate text per 30s window but no per-word
-                                // timing yet — even-distribute each window's text into pseudo-
-                                // words and refine the turns in place (blue draft → white).
+                               Date().timeIntervalSince(self.lastRefineAt) >= self.refineMinInterval {
+                                self.lastRefineAt = Date()
                                 let whisperWords = update.segments.flatMap {
                                     TranscriptRefiner.pseudoWords(text: $0.text, start: $0.start, end: $0.end)
                                 }
+                                let covered = update.segments.map(\.end).max() ?? update.coveredUntil
                                 self.diarizedUtterances = TranscriptRefiner.refine(
                                     turns: self.diarizedUtterances,
                                     whisperWords: whisperWords,
-                                    coveredUntil: update.coveredUntil)
+                                    coveredUntil: covered)
                             }
 
                             // Start transcription timer on first real content
@@ -2510,10 +2513,6 @@ class TranscriptionViewModel: ObservableObject {
             let speakers = try await diarizationService.diarize(fileURL: url, expectedSpeakers: expectedSpeakers)
             let utterances = await diarizationMerger.merge(words: words, speakers: speakers)
             self.diarizedUtterances = utterances
-            // TEMP DIAG (manual path): diarizer's raw audio speaker count vs merged turns.
-            let rawSpeakers = Set(speakers.map(\.speakerLabel)).count
-            let turnSpeakers = Set(utterances.map(\.speakerID)).count
-            self.diarizationError = "DIAG(manual) rawSpeakers=\(rawSpeakers) words=\(words.count)(whisper) turns=\(utterances.count)/\(turnSpeakers)"
         } catch {
             self.diarizationError = error.localizedDescription
         }
@@ -2538,11 +2537,6 @@ class TranscriptionViewModel: ObservableObject {
         guard !words.isEmpty else { return }
         let merged = await diarizationMerger.merge(words: words, speakers: speakers)
         diarizedUtterances = usingDraft ? Self.markWords(merged, refined: false) : merged
-        // TEMP DIAG (auto path): diarizer's raw audio speaker count vs merged turns, and
-        // which words fed the merge. Compare against the manual DIAG to locate the cause.
-        let rawSpeakers = Set(speakers.map(\.speakerLabel)).count
-        let turnSpeakers = Set(merged.map(\.speakerID)).count
-        diarizationError = "DIAG(auto) rawSpeakers=\(rawSpeakers) words=\(words.count)(\(usingDraft ? "draft" : "whisper")) turns=\(merged.count)/\(turnSpeakers)"
     }
 
     /// Returns turns with every word's `refined` flag set (draft = false → blue).

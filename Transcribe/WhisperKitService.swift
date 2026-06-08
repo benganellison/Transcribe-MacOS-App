@@ -400,16 +400,24 @@ private final class StreamingCallbackState: @unchecked Sendable {
             let segmentProgress = min(segmentCount / 10.0, 0.9)
             let estimatedProgress = min(0.3 + max(timeProgress, segmentProgress) * 0.65, 0.95)
             
-            // Emit completed 30s windows as coarse segments (text + time bounds, no
-            // per-word timing yet) so the diarized view can refine its turns
-            // window-by-window. The in-progress window is excluded (not yet covered).
-            let windowSegments = completedSegments.keys.sorted().map { wid in
+            // Emit completed 30s windows PLUS the in-progress window as coarse segments
+            // (text + time bounds, no per-word timing yet) so the diarized view fills in
+            // continuously as Whisper decodes, not in 30s jumps.
+            var windowSegments = completedSegments.keys.sorted().map { wid in
                 TranscriptionSegmentData(
                     start: Double(wid) * 30.0,
                     end: Double(wid + 1) * 30.0,
                     text: completedSegments[wid] ?? "",
                     words: nil
                 )
+            }
+            if currentWindowId >= 0, !currentWindowText.isEmpty {
+                windowSegments.append(TranscriptionSegmentData(
+                    start: Double(currentWindowId) * 30.0,
+                    end: Double(currentWindowId + 1) * 30.0,
+                    text: currentWindowText,
+                    words: nil
+                ))
             }
 
             continuation.yield(TranscriptionUpdate(
