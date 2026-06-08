@@ -3,6 +3,23 @@ import SwiftUI
 import Combine
 import Security
 
+// MARK: - UserDefaults defaulting helpers
+
+extension UserDefaults {
+    /// `bool(forKey:)` returns `false` for a missing key, which silently disables
+    /// settings whose intended default is `true`. This returns `defaultValue` when the
+    /// key has never been written.
+    func bool(forKey key: String, default defaultValue: Bool) -> Bool {
+        object(forKey: key) as? Bool ?? defaultValue
+    }
+
+    /// `double(forKey:)` returns `0` for a missing key. This returns `defaultValue`
+    /// when the key has never been written.
+    func double(forKey key: String, default defaultValue: Double) -> Double {
+        object(forKey: key) as? Double ?? defaultValue
+    }
+}
+
 // MARK: - Native Keychain Helper
 
 /// Lightweight wrapper around the Security framework for storing API keys.

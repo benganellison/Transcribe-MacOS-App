@@ -2097,22 +2097,35 @@ class TranscriptionViewModel: ObservableObject {
         // Fast draft: for long files, show a quick Parakeet pass immediately and
         // refine it front-to-back as Whisper streams in. Draft + diarization are
         // local-only features, so they live on the WhisperKit path.
-        let draftEnabled = UserDefaults.standard.bool(forKey: "fastDraftEnabled")
-        let thresholdSec = UserDefaults.standard.double(forKey: "fastDraftThresholdMinutes") * 60
+        let draftEnabled = UserDefaults.standard.bool(forKey: "fastDraftEnabled", default: true)
+        let thresholdSec = UserDefaults.standard.double(forKey: "fastDraftThresholdMinutes", default: 5) * 60
+        let identifySpeakers = UserDefaults.standard.bool(forKey: "identifySpeakers", default: true)
+        NSLog("[Transcribe][draft-gate] draftEnabled=\(draftEnabled) duration=\(duration) thresholdSec=\(thresholdSec) identifySpeakers=\(identifySpeakers)")
         if draftEnabled && duration >= thresholdSec {
             isShowingDraft = true
             statusMessage = localized("draft_refining")
             Task { @MainActor in
-                if let segs = try? await draftService.transcribe(fileURL: fileURL), isShowingDraft {
-                    draftSegments = segs
-                    refreshDraftDisplay()
-                    await applyDiarizationIfPossible()
+                do {
+                    let segs = try await draftService.transcribe(fileURL: fileURL)
+                    NSLog("[Transcribe][draft] produced \(segs.count) draft segments; isShowingDraft=\(isShowingDraft)")
+                    if isShowingDraft {
+                        draftSegments = segs
+                        refreshDraftDisplay()
+                        await applyDiarizationIfPossible()
+                    }
+                } catch {
+                    NSLog("[Transcribe][draft] FAILED: \(error)")
                 }
             }
-            if UserDefaults.standard.bool(forKey: "identifySpeakers") {
+            if identifySpeakers {
                 Task { @MainActor in
-                    cachedSpeakerSegments = try? await diarizationService.diarize(fileURL: fileURL)
-                    await applyDiarizationIfPossible()
+                    do {
+                        cachedSpeakerSegments = try await diarizationService.diarize(fileURL: fileURL)
+                        NSLog("[Transcribe][diarize-draftpath] got \(cachedSpeakerSegments?.count ?? -1) speaker segments")
+                        await applyDiarizationIfPossible()
+                    } catch {
+                        NSLog("[Transcribe][diarize-draftpath] FAILED: \(error)")
+                    }
                 }
             }
         }
@@ -2409,7 +2422,9 @@ class TranscriptionViewModel: ObservableObject {
         self.statusMessage = ""
 
         // Auto-run diarization when the user opted in via Settings.
-        if UserDefaults.standard.bool(forKey: "identifySpeakers") {
+        let autoDiarize = UserDefaults.standard.bool(forKey: "identifySpeakers", default: true)
+        NSLog("[Transcribe][finish] autoDiarize=\(autoDiarize) cachedSpeakers=\(cachedSpeakerSegments?.count ?? -1) segments=\(segments.count)")
+        if autoDiarize {
             if cachedSpeakerSegments != nil {
                 // Draft path already clustered speakers; just re-merge against the
                 // accurate final words instead of re-running diarization.
