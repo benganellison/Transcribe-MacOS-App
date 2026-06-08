@@ -69,6 +69,36 @@ struct TranscriptRefinerTests {
         #expect(out[1].words?.contains { $0.word == "gap" } == false)
     }
 
+    @Test func testReplacePositionalSwapsTextLeftToRight() {
+        let turns = [
+            turn("Speaker 1", 0, 4, words: [word("a", 0, 2, refined: false), word("b", 2, 4, refined: false)]),
+            turn("Speaker 2", 4, 8, words: [word("c", 4, 6, refined: false), word("d", 6, 8, refined: false)]),
+        ]
+        // Whisper has emitted 3 words so far.
+        let out = TranscriptRefiner.replacePositional(turns: turns, whisperWords: ["A", "B", "C"])
+        #expect(out.count == 2)                                  // structure unchanged
+        #expect(out[0].words?.map(\.word) == ["A", "B"])
+        #expect(out[1].words?.map(\.word) == ["C", "d"])         // 4th word not yet reached
+        #expect(out[0].words?.allSatisfy { $0.isRefined } == true)
+        #expect(out[1].words?.first?.isRefined == true)          // C refined (white)
+        #expect(out[1].words?.last?.isRefined == false)          // d still draft (blue)
+        #expect(out[1].text == "C d")
+    }
+
+    @Test func testReplacePositionalKeepsLockedWords() {
+        let turns = [turn("Speaker 1", 0, 4, words: [
+            word("a", 0, 2, refined: false),
+            word("EDITED", 2, 4, refined: true, locked: true),
+        ])]
+        let out = TranscriptRefiner.replacePositional(turns: turns, whisperWords: ["A", "B"])
+        #expect(out[0].words?.map(\.word) == ["A", "EDITED"])    // locked kept; position consumed
+    }
+
+    @Test func testReplacePositionalEmptyWhisperIsNoOp() {
+        let turns = [turn("Speaker 1", 0, 2, words: [word("a", 0, 2, refined: false)])]
+        #expect(TranscriptRefiner.replacePositional(turns: turns, whisperWords: []) == turns)
+    }
+
     @Test func testPseudoWordsEvenlyDistributeAndMarkRefined() {
         let words = TranscriptRefiner.pseudoWords(text: "a b c d", start: 0, end: 4)
         #expect(words.map(\.word) == ["a", "b", "c", "d"])

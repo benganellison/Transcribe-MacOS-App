@@ -2178,24 +2178,18 @@ class TranscriptionViewModel: ObservableObject {
                             self.wordCount = self.transcribedText.split(separator: " ").count
                             self.statusMessage = ""
 
-                            // Progressive refinement: splice the accurate Whisper text
-                            // (completed + in-progress windows) into the existing speaker
-                            // turns in place (blue→white), keeping turn identity, speaker
-                            // edits, and locked words. Per-word timing is approximate during
-                            // streaming (no Whisper word timings yet) and exact at completion.
-                            // Wall-time throttled so it fills in continuously without
-                            // re-rendering on every 0.2s callback. Stable ids → no reflow.
+                            // Progressive refinement by WORD POSITION (not timestamp): keep
+                            // the draft's word array fixed (count, timings, speaker turns)
+                            // and swap each word's text to the matching Whisper word left-to-
+                            // right, flipping it blue→white. No count/structure change → no
+                            // reflow. The exact structure lands via the completion re-merge.
                             if !self.diarizedUtterances.isEmpty,
                                Date().timeIntervalSince(self.lastRefineAt) >= self.refineMinInterval {
                                 self.lastRefineAt = Date()
-                                let whisperWords = update.segments.flatMap {
-                                    TranscriptRefiner.pseudoWords(text: $0.text, start: $0.start, end: $0.end)
-                                }
-                                let covered = update.segments.map(\.end).max() ?? update.coveredUntil
-                                self.diarizedUtterances = TranscriptRefiner.refine(
+                                let whisperWords = update.text.split(whereSeparator: { $0 == " " || $0 == "\n" }).map(String.init)
+                                self.diarizedUtterances = TranscriptRefiner.replacePositional(
                                     turns: self.diarizedUtterances,
-                                    whisperWords: whisperWords,
-                                    coveredUntil: covered)
+                                    whisperWords: whisperWords)
                             }
 
                             // Start transcription timer on first real content

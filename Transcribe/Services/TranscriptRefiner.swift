@@ -76,6 +76,38 @@ enum TranscriptRefiner {
         max(a.start, b.start) < min(a.end, b.end)
     }
 
+    /// Positional (index-based) refinement for streaming, kept stable by design:
+    /// the draft's word array — its count, per-word timings, and speaker-turn
+    /// assignment — is the fixed scaffold; we only swap each word's *text* to the
+    /// matching Whisper word (by position) and flip it refined (white). Words past
+    /// Whisper's progress stay draft (blue). No words are added/removed and no word
+    /// changes turn, so the layout doesn't reflow. Locked (user-edited) words keep
+    /// their text but still consume a position.
+    ///
+    /// Alignment drifts where draft and Whisper word counts diverge; that's fine for
+    /// a live preview — the completion re-merge replaces this with the exact result.
+    static func replacePositional(turns: [DiarizedUtterance], whisperWords: [String]) -> [DiarizedUtterance] {
+        guard !whisperWords.isEmpty else { return turns }
+        var idx = 0
+        return turns.map { turn in
+            guard var words = turn.words, !words.isEmpty else { return turn }
+            for w in words.indices {
+                defer { idx += 1 }
+                if words[w].isLocked { continue }
+                if idx < whisperWords.count {
+                    words[w].word = whisperWords[idx]
+                    words[w].refined = true
+                } else {
+                    words[w].refined = false
+                }
+            }
+            var t = turn
+            t.words = words
+            t.text = words.map(\.word).joined(separator: " ")
+            return t
+        }
+    }
+
     /// Even-distributes a completed Whisper window's accurate text across its
     /// `[start, end]` span into refined pseudo-words. Used during streaming where the
     /// text is accurate but per-word timing isn't available yet (timing becomes exact
