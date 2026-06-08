@@ -52,4 +52,15 @@ final class ParakeetDraftParserTests: XCTestCase {
         XCTAssertTrue(ParakeetDraftParser.tokensToWords([]).isEmpty)
         XCTAssertTrue(ParakeetDraftParser.wordsToSegments([], maxGapSeconds: 0.8).isEmpty)
     }
+
+    func testWordsFromTextSplitsAndDistributesTiming() {
+        let words = ParakeetDraftParser.wordsFromText("hej jag heter Anna", start: 0, end: 8)
+        XCTAssertEqual(words.map(\.word), ["hej", "jag", "heter", "Anna"])
+        XCTAssertEqual(words.first?.start, 0)
+        XCTAssertEqual(words.last?.end, 8)
+    }
+
+    func testWordsFromTextEmpty() {
+        XCTAssertTrue(ParakeetDraftParser.wordsFromText("   ", start: 0, end: 8).isEmpty)
+    }
 }

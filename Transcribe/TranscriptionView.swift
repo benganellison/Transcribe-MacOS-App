@@ -2217,15 +2217,9 @@ class TranscriptionViewModel: ObservableObject {
                                 self.transcribedText = update.text
                                 self.wordCount = update.text.split(separator: " ").count
                             }
-                            // Final refinement pass: whiten every remaining draft word in
-                            // the speaker turns (full coverage), preserving locked edits.
-                            if !self.diarizedUtterances.isEmpty {
-                                let whisperWords = update.segments.flatMap { $0.words ?? [] }
-                                self.diarizedUtterances = TranscriptRefiner.refine(
-                                    turns: self.diarizedUtterances,
-                                    whisperWords: whisperWords,
-                                    coveredUntil: .greatestFiniteMagnitude)
-                            }
+                            // Speaker turns are rebuilt from the full Whisper transcript in
+                            // finishTranscription() (the draft is too sparse to structure
+                            // them); no in-place refine needed here.
                             self.finishTranscription()
                         }
                     }
@@ -2459,19 +2453,19 @@ class TranscriptionViewModel: ObservableObject {
         self.isProcessingChunks = false
         self.statusMessage = ""
 
-        // Auto-run diarization for the non-draft path only. On the draft path,
-        // diarization already ran alone (correct speakers) before Whisper and the final
-        // refinement pass has whitened the turns — re-running would wipe manual speaker
-        // edits made during streaming. On the non-draft path nothing diarized yet, so do
-        // one clean pass now that Whisper is done and the engines are idle.
+        // Build the authoritative speaker turns now that the full, accurate Whisper
+        // transcript exists. The during-streaming turns were merged against the sparse
+        // draft, so rebuild from Whisper (this is what the manual re-run does, and what
+        // makes auto == manual).
         let autoDiarize = UserDefaults.standard.bool(forKey: "identifySpeakers", default: true)
         if autoDiarize {
             if cachedSpeakerSegments == nil {
-                // Non-draft path (or diarization failed earlier): one clean pass now.
+                // Non-draft path (or diarization failed earlier): full clean pass now.
                 let expected = UserDefaults.standard.integer(forKey: "expectedSpeakers")
                 Task { await self.diarize(expectedSpeakers: expected > 0 ? expected : nil) }
-            } else if diarizedUtterances.isEmpty {
-                // Draft path where the draft failed: build turns from final Whisper words.
+            } else {
+                // Draft path: re-merge the cached speaker segments against the final
+                // Whisper words (segments) for the correct turn structure.
                 Task { @MainActor in await self.applyDiarizationIfPossible() }
             }
         }

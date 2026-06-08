@@ -45,10 +45,20 @@ final class DraftTranscriptionService {
             var decoderState = try TdtDecoderState()
             let language: Language? = languageCode.flatMap { $0 == "auto" ? nil : Language(rawValue: $0) }
             let result = try await manager.transcribe(fileURL, decoderState: &decoderState, language: language)
-            let tokens = (result.tokenTimings ?? []).map { timing in
+            let timings = result.tokenTimings ?? []
+            let tokens = timings.map { timing in
                 ParakeetDraftParser.Token(text: timing.token, start: timing.startTime, end: timing.endTime, confidence: timing.confidence)
             }
-            let words = ParakeetDraftParser.tokensToWords(tokens)
+            var words = ParakeetDraftParser.tokensToWords(tokens)
+            // If token grouping collapsed (the tokens lack the ▁ boundary marker for this
+            // audio), rebuild words from the accurate text so the draft isn't one giant
+            // word — which otherwise breaks the diarization merge.
+            let textWordCount = result.text.split(separator: " ").count
+            if words.count <= 1 && textWordCount > 1 {
+                let spanStart = timings.first?.startTime ?? 0
+                let spanEnd = timings.last?.endTime ?? result.duration
+                words = ParakeetDraftParser.wordsFromText(result.text, start: spanStart, end: spanEnd)
+            }
             if words.isEmpty {
                 return [TranscriptionSegmentData(start: 0, end: result.duration, text: result.text, words: nil)]
             }

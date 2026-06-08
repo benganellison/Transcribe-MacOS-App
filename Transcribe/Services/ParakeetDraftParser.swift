@@ -38,6 +38,21 @@ enum ParakeetDraftParser {
         return words
     }
 
+    /// Fallback word builder when token-level grouping fails (e.g. the token strings
+    /// don't carry the ▁ word-boundary marker, so everything would collapse into one
+    /// "word"). Splits the model's already-correct `text` on whitespace and evenly
+    /// distributes timing across `[start, end]`. Coarse per-word timing, but the right
+    /// word count — enough for the draft preview and the diarization merge.
+    static func wordsFromText(_ text: String, start: TimeInterval, end: TimeInterval) -> [WordTimestamp] {
+        let tokens = text.split(whereSeparator: { $0 == " " || $0 == "\n" }).map(String.init)
+        guard !tokens.isEmpty else { return [] }
+        let span = max(0, end - start)
+        let step = span / Double(tokens.count)
+        return tokens.enumerated().map { i, w in
+            WordTimestamp(word: w, start: start + step * Double(i), end: start + step * Double(i + 1), confidence: 1.0)
+        }
+    }
+
     /// Groups words into segments, breaking on a sentence-final word (ends with
     /// . ! ?) or a pause longer than `maxGapSeconds`.
     static func wordsToSegments(_ words: [WordTimestamp], maxGapSeconds: TimeInterval) -> [TranscriptionSegmentData] {
