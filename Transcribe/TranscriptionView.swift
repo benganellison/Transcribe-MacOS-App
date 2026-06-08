@@ -2545,7 +2545,12 @@ class TranscriptionViewModel: ObservableObject {
         let sLo = speakers.map(\.start).min() ?? -1, sHi = speakers.map(\.end).max() ?? -1
         NSLog("[Transcribe][diar] usingDraft=\(usingDraft) speakerSegments=\(speakers.count) distinctSpeakers=\(distinctSpeakers) words=\(words.count) wordTime=\(wLo)…\(wHi) speakerTime=\(sLo)…\(sHi)")
         let merged = await diarizationMerger.merge(words: words, speakers: speakers)
-        NSLog("[Transcribe][diar] merged into \(merged.count) turns across \(Set(merged.map(\.speakerID)).count) distinct speakers")
+        let distinctTurns = Set(merged.map(\.speakerID)).count
+        NSLog("[Transcribe][diar] merged into \(merged.count) turns across \(distinctTurns) distinct speakers")
+        // TEMP on-screen diagnostic (surfaces even when NSLog doesn't): shows whether the
+        // diarizer found multiple speakers and whether the word timeline matches the
+        // speaker timeline. Remove once the one-speaker cause is confirmed.
+        diarizationError = "DIAG spk=\(speakers.count) distinct=\(distinctSpeakers) turns=\(merged.count)/\(distinctTurns) wordT=\(Int(wLo))-\(Int(wHi)) spkT=\(Int(sLo))-\(Int(sHi)) draft=\(usingDraft)"
         diarizedUtterances = usingDraft ? Self.markWords(merged, refined: false) : merged
     }
 
