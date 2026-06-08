@@ -71,6 +71,11 @@ extension Color {
         dark: hex(0x888888),
         light: hex(0x6E6E75)
     )
+    /// Unrefined draft words during progressive refinement (blue → white as Whisper lands).
+    static let draftBlue = adaptiveColor(
+        dark: hex(0x5AA9FF),
+        light: hex(0x2F6FD0)
+    )
 
     // Chrome
     static let borderLight = adaptiveColor(

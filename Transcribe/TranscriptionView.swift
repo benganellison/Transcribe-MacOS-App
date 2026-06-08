@@ -285,11 +285,16 @@ struct TranscriptionView: View {
                 diarizationMenuButton
             }
 
+            // Follow-playback only matters once playback is possible (after transcription).
             if !viewModel.isTranscribing && hasWordTimings {
                 Toggle(isOn: $followPlayback) {
                     Label(localized("follow_playback"), systemImage: "text.line.first.and.arrowtriangle.forward")
                 }
                 .toggleStyle(.button).help(localized("follow_playback_help"))
+            }
+            // Editing is available during streaming too (diarized view): edits lock words
+            // against progressive refinement, so you can correct text as it streams.
+            if (!viewModel.isTranscribing && hasWordTimings) || !viewModel.diarizedUtterances.isEmpty {
                 Toggle(isOn: $isEditingTranscript) {
                     Label(localized("edit_transcript"), systemImage: "pencil")
                 }
@@ -713,6 +718,7 @@ struct TranscriptionView: View {
                                 isEditing: isEditingTranscript,
                                 showConfidenceHints: isEditingTranscript || showConfidenceHints,
                                 lowConfidenceThreshold: 0.5,
+                                colorBySource: viewModel.isTranscribing,
                                 onSeek: { viewModel.seek(to: $0) },
                                 onEditWord: { wIndex, text in
                                     viewModel.editDiarizedWord(utteranceIndex: uIndex, wordIndex: wIndex, newText: text)
@@ -2003,6 +2009,9 @@ class TranscriptionViewModel: ObservableObject {
         guard !trimmed.isEmpty else { return }
         captureOriginalIfNeeded()
         words[wordIndex].word = trimmed
+        // Lock the edit so progressive refinement won't overwrite it, and mark it final.
+        words[wordIndex].locked = true
+        words[wordIndex].refined = true
         diarizedUtterances[utteranceIndex].words = words
         diarizedUtterances[utteranceIndex].text = words.map(\.word).joined(separator: " ")
     }
@@ -2013,8 +2022,11 @@ class TranscriptionViewModel: ObservableObject {
         let u = diarizedUtterances[utteranceIndex]
         let temp = TranscriptionSegmentData(start: u.startTime, end: u.endTime, text: u.text, words: u.words)
         let reconciled = TimedTranscript.reconcileSentence(temp, newText: newText)
+        // Lock every word of the edited sentence against refinement; mark final.
         diarizedUtterances[utteranceIndex].text = reconciled.text
-        diarizedUtterances[utteranceIndex].words = reconciled.words
+        diarizedUtterances[utteranceIndex].words = reconciled.words?.map {
+            var w = $0; w.locked = true; w.refined = true; return w
+        }
     }
 
     func restoreDiarizedWord(utteranceIndex: Int, wordIndex: Int) {
@@ -2107,32 +2119,38 @@ class TranscriptionViewModel: ObservableObject {
         if draftEnabled && duration >= thresholdSec {
             isShowingDraft = true
             statusMessage = localized("draft_refining")
+            // Sequence the ML work so each stage runs on idle engines: draft first,
+            // then diarization ALONE (concurrency makes it collapse to one speaker),
+            // then Whisper refinement. Whisper progressively whitens the blue draft.
             Task { @MainActor in
+                // 1. Fast Parakeet draft → full rough (blue) transcript.
                 do {
                     let segs = try await draftService.transcribe(fileURL: fileURL)
                     if isShowingDraft {
                         draftSegments = segs
                         refreshDraftDisplay()
-                        await applyDiarizationIfPossible()
                     }
                 } catch {
                     NSLog("[Transcribe] fast draft failed (falling back to Whisper only): \(error)")
                 }
-            }
-            if identifySpeakers {
-                Task { @MainActor in
+                // 2. Diarization on its own, then group the draft words into correct
+                //    speaker turns (marked unrefined → shown blue).
+                if identifySpeakers {
+                    statusMessage = localized("identifying_speakers")
                     do {
                         cachedSpeakerSegments = try await diarizationService.diarize(fileURL: fileURL)
                         await applyDiarizationIfPossible()
                     } catch {
-                        NSLog("[Transcribe] background diarization failed: \(error)")
+                        NSLog("[Transcribe] diarization failed: \(error)")
                     }
                 }
+                // 3. Whisper refinement: streams accurate words, whitening in place.
+                startWhisperKitTranscription()
             }
+            return
         }
 
-        // All local models now use WhisperKit (streaming)
-        // This includes OpenAI models and KB CoreML models
+        // No draft (short file or disabled): straight to Whisper streaming.
         startWhisperKitTranscription()
     }
     
@@ -2168,19 +2186,18 @@ class TranscriptionViewModel: ObservableObject {
                             self.wordCount = self.transcribedText.split(separator: " ").count
                             self.statusMessage = ""
 
-                            // Live speaker refinement: once diarization has clustered
-                            // speakers (from the draft), re-merge them against the
-                            // sharpening Whisper text so the speaker blocks improve
-                            // front-to-back. Throttled by covered-time so the diarized
-                            // list reflows periodically, not every tick.
-                            if let speakers = self.cachedSpeakerSegments, !speakers.isEmpty,
+                            // Progressive refinement: splice accurate Whisper words into
+                            // the existing speaker turns in place (blue→white), keeping
+                            // turn identity, speaker edits, and locked words. Throttled by
+                            // covered-time. Turn ids are stable, so no scroll reflow.
+                            if !self.diarizedUtterances.isEmpty,
                                update.coveredUntil - self.lastLiveDiarizeUntil >= self.liveDiarizeIntervalSeconds {
                                 self.lastLiveDiarizeUntil = update.coveredUntil
-                                let whisperSegments = update.segments
-                                let covered = update.coveredUntil
-                                Task { @MainActor in
-                                    await self.applyLiveDiarization(whisperSegments: whisperSegments, coveredUntil: covered)
-                                }
+                                let whisperWords = update.segments.flatMap { $0.words ?? [] }
+                                self.diarizedUtterances = TranscriptRefiner.refine(
+                                    turns: self.diarizedUtterances,
+                                    whisperWords: whisperWords,
+                                    coveredUntil: update.coveredUntil)
                             }
 
                             // Start transcription timer on first real content
@@ -2204,6 +2221,15 @@ class TranscriptionViewModel: ObservableObject {
                                 self.draftSegments = []
                                 self.transcribedText = update.text
                                 self.wordCount = update.text.split(separator: " ").count
+                            }
+                            // Final refinement pass: whiten every remaining draft word in
+                            // the speaker turns (full coverage), preserving locked edits.
+                            if !self.diarizedUtterances.isEmpty {
+                                let whisperWords = update.segments.flatMap { $0.words ?? [] }
+                                self.diarizedUtterances = TranscriptRefiner.refine(
+                                    turns: self.diarizedUtterances,
+                                    whisperWords: whisperWords,
+                                    coveredUntil: .greatestFiniteMagnitude)
                             }
                             self.finishTranscription()
                         }
@@ -2437,15 +2463,13 @@ class TranscriptionViewModel: ObservableObject {
         self.isProcessingChunks = false
         self.statusMessage = ""
 
-        // Auto-run diarization when the user opted in via Settings.
+        // Auto-run diarization for the non-draft path only. On the draft path,
+        // diarization already ran alone (correct speakers) before Whisper and the final
+        // refinement pass has whitened the turns — re-running would wipe manual speaker
+        // edits made during streaming. On the non-draft path nothing diarized yet, so do
+        // one clean pass now that Whisper is done and the engines are idle.
         let autoDiarize = UserDefaults.standard.bool(forKey: "identifySpeakers", default: true)
-        if autoDiarize {
-            // Always run a fresh diarization now that transcription is finished and the
-            // ML engines are idle. The `cachedSpeakerSegments` computed during streaming
-            // ran concurrently with Parakeet + Whisper and tends to under-cluster (one
-            // speaker) under that contention, so it's only used for the live preview —
-            // never as the final result. This matches the manual "Re-run" path.
-            cachedSpeakerSegments = nil
+        if autoDiarize && cachedSpeakerSegments == nil {
             Task { await self.diarize() }
         }
     }
@@ -2500,29 +2524,28 @@ class TranscriptionViewModel: ObservableObject {
         wordCount = transcribedText.split(separator: " ").count
     }
 
-    /// Diarize once, merge twice: merge the cached speaker segments with whatever
-    /// word-timed transcript is current (final segments if Whisper is done, else draft).
+    /// Merge the cached speaker segments with the current word-timed transcript to
+    /// build the speaker turns. When the source is the draft (Whisper hasn't run yet),
+    /// the words are marked unrefined so they render blue and Whisper can whiten them.
     private func applyDiarizationIfPossible() async {
         guard let speakers = cachedSpeakerSegments else { return }
-        let source = (!isShowingDraft && !segments.isEmpty) ? segments : draftSegments
+        let usingDraft = isShowingDraft || segments.isEmpty
+        let source = usingDraft ? draftSegments : segments
         let words: [DiarizationMerger.Word] = source.flatMap { seg in
             (seg.words ?? []).map { DiarizationMerger.Word(text: $0.word, start: $0.start, end: $0.end) }
         }
         guard !words.isEmpty else { return }
-        diarizedUtterances = await diarizationMerger.merge(words: words, speakers: speakers)
+        let merged = await diarizationMerger.merge(words: words, speakers: speakers)
+        diarizedUtterances = usingDraft ? Self.markWords(merged, refined: false) : merged
     }
 
-    /// Live re-merge during streaming: build a combined transcript of the accurate
-    /// Whisper segments (0…coveredUntil) plus the draft tail, then re-cluster words
-    /// into speaker turns so the diarized view sharpens front-to-back with Whisper.
-    private func applyLiveDiarization(whisperSegments: [TranscriptionSegmentData], coveredUntil: TimeInterval) async {
-        guard let speakers = cachedSpeakerSegments, !speakers.isEmpty else { return }
-        let combined = DraftSplice.combinedSegments(whisper: whisperSegments, draft: draftSegments, coveredUntil: coveredUntil)
-        let words: [DiarizationMerger.Word] = combined.flatMap { seg in
-            (seg.words ?? []).map { DiarizationMerger.Word(text: $0.word, start: $0.start, end: $0.end) }
+    /// Returns turns with every word's `refined` flag set (draft = false → blue).
+    private static func markWords(_ turns: [DiarizedUtterance], refined: Bool) -> [DiarizedUtterance] {
+        turns.map { turn in
+            var t = turn
+            t.words = turn.words?.map { var w = $0; w.refined = refined; return w }
+            return t
         }
-        guard !words.isEmpty else { return }
-        diarizedUtterances = await diarizationMerger.merge(words: words, speakers: speakers)
     }
 
     private func handleTranscriptionError(_ error: Error) {
@@ -2679,6 +2702,17 @@ struct WordTimestamp: Codable, Equatable {
     var start: Double
     var end: Double
     var confidence: Float
+    /// Progressive refinement state. `false` = still a Parakeet draft word (shown blue);
+    /// `nil`/`true` = refined by Whisper or final (shown white). Optional so older
+    /// persisted transcripts decode and render as final.
+    var refined: Bool? = nil
+    /// `true` once the user has edited this word; progressive refinement then skips it
+    /// so the edit is never overwritten. Optional for decode-compatibility.
+    var locked: Bool? = nil
+
+    /// Treat absent/`nil` as final (white) so loaded transcripts aren't all blue.
+    var isRefined: Bool { refined ?? true }
+    var isLocked: Bool { locked ?? false }
 }
 
 // MARK: - Auto-Scrolling Text View

@@ -208,11 +208,14 @@ Manual correction of diarizer mistakes, all reducing to "relabel an utterance + 
 - **Merge** whole speaker B→A; **Reassign** one turn (no regroup, so manual splits survive); **Split** a turn at a word boundary; **Join** with the previous turn; **Restore** the diarizer's original assignment from the `originalDiarizedUtterances` snapshot.
 - VM methods on `TranscriptionViewModel`: `mergeSpeaker(_:into:)`, `reassignUtterance(id:to:)`, `splitDiarizedUtterance(id:beforeWordIndex:)`, `joinUtteranceWithPrevious(id:)`, `restoreOriginalSpeakers()`. Each snapshots originals on first change and persists via `updateDiarization` + `updateOriginalDiarization` (or the voice-memo sidecar).
 
-### Instant Draft (long recordings)
-For recordings over `fastDraftThresholdMinutes` (when `fastDraftEnabled`), a Parakeet v3 draft appears immediately and is progressively replaced front-to-back by streaming KB-Whisper:
-- **Three concurrent tracks**: (1) `DraftTranscriptionService` transcribes the whole file fast → `draftSegments`, shown via `isShowingDraft`; (2) WhisperKit streams the accurate text; (3) `DiarizationService` runs audio-only into `cachedSpeakerSegments`.
-- **Splice**: each streaming update calls `DraftSplice.combinedText(whisperText:draft:coveredUntil:)` — accurate text up to `update.coveredUntil`, draft tail beyond. `coveredUntil` is surfaced on `TranscriptionUpdate` (per-window during streaming, last segment end on completion).
-- **Diarization merges once**: `cachedSpeakerSegments` is merged with the draft first, then re-merged against the final transcript via `applyDiarizationIfPossible`.
+### Instant Draft + Progressive Refinement (long recordings)
+For recordings over `fastDraftThresholdMinutes` (when `fastDraftEnabled`), the ML work is **sequenced** so each stage runs on idle engines — running diarization concurrently with Parakeet/Whisper makes it collapse to one speaker:
+1. **Draft (Parakeet)** — `DraftTranscriptionService` transcribes the whole file fast → `draftSegments`, shown immediately via `isShowingDraft` (words are **blue** = unrefined).
+2. **Diarization alone** — after the draft, `DiarizationService` runs on its own → `cachedSpeakerSegments`; `applyDiarizationIfPossible` groups the draft words into correct speaker turns (marked unrefined/blue via `markWords`).
+3. **Whisper refinement** — WhisperKit streams accurate words; on each update (throttled by covered-time) `TranscriptRefiner.refine(turns:whisperWords:coveredUntil:)` splices them into the existing turns **in place** (blue → **white**), preserving turn identity (no scroll reflow), speaker edits, and **locked** user-edited words. The final `isComplete` update refines with full coverage.
+- **Word state**: `WordTimestamp.refined` (false = draft/blue) and `locked` (true = user-edited, never overwritten). `WordFlowView` colors by source (`colorBySource`) while `isTranscribing`. Both optional → old transcripts decode as final/white.
+- **Plain-text splice** (non-diarized streaming) still uses `DraftSplice.combinedText(whisperText:draft:coveredUntil:)`; `coveredUntil` is surfaced on `TranscriptionUpdate`.
+- **Editing during streaming**: the diarized view is interactive while Whisper refines — fix speakers (label menu) and edit words (edits lock against refinement). No diarization re-run at completion on the draft path (would wipe edits); the non-draft/short-file path diarizes once after Whisper finishes.
 
 ### Transcription Persistence
 Transcription (text + segments + word timings) and diarization are cached so reopening a recording never re-transcribes:

@@ -11,6 +11,9 @@ struct WordFlowView: View {
     let showConfidenceHints: Bool
     /// confidence below this gets a subtle cue (only when hints shown)
     let lowConfidenceThreshold: Float
+    /// While transcribing, color by refinement source (blue = draft, white = refined)
+    /// instead of by playback position. Defaults to off (normal karaoke highlight).
+    var colorBySource: Bool = false
 
     let onSeek: (TimeInterval) -> Void
     let onEditWord: (_ wordIndex: Int, _ newText: String) -> Void
@@ -79,6 +82,10 @@ struct WordFlowView: View {
     }
 
     private func color(for word: WordTimestamp) -> Color {
+        if colorBySource {
+            // Progressive refinement: refined words are final (white), draft words blue.
+            return word.isRefined ? .textPrimary : .draftBlue
+        }
         if word.start <= currentTime && currentTime <= word.end {
             return .primaryAccent          // current word
         }
