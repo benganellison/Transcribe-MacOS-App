@@ -1813,6 +1813,9 @@ class TranscriptionViewModel: ObservableObject {
     @Published var isShowingDraft = false
     private var cachedSpeakerSegments: [SpeakerSegment]? = nil
     private let draftService = DraftTranscriptionService()
+    /// Covered-time of the last live diarization re-merge, to throttle reflow during streaming.
+    private var lastLiveDiarizeUntil: TimeInterval = 0
+    private let liveDiarizeIntervalSeconds: TimeInterval = 8
 
     // MARK: - Diarization
     @Published var diarizedUtterances: [DiarizedUtterance] = []
@@ -2068,6 +2071,7 @@ class TranscriptionViewModel: ObservableObject {
         draftSegments = []
         isShowingDraft = false
         cachedSpeakerSegments = nil
+        lastLiveDiarizeUntil = 0
 
         // Start fresh
         startTranscription()
@@ -2100,31 +2104,28 @@ class TranscriptionViewModel: ObservableObject {
         let draftEnabled = UserDefaults.standard.bool(forKey: "fastDraftEnabled", default: true)
         let thresholdSec = UserDefaults.standard.double(forKey: "fastDraftThresholdMinutes", default: 5) * 60
         let identifySpeakers = UserDefaults.standard.bool(forKey: "identifySpeakers", default: true)
-        NSLog("[Transcribe][draft-gate] draftEnabled=\(draftEnabled) duration=\(duration) thresholdSec=\(thresholdSec) identifySpeakers=\(identifySpeakers)")
         if draftEnabled && duration >= thresholdSec {
             isShowingDraft = true
             statusMessage = localized("draft_refining")
             Task { @MainActor in
                 do {
                     let segs = try await draftService.transcribe(fileURL: fileURL)
-                    NSLog("[Transcribe][draft] produced \(segs.count) draft segments; isShowingDraft=\(isShowingDraft)")
                     if isShowingDraft {
                         draftSegments = segs
                         refreshDraftDisplay()
                         await applyDiarizationIfPossible()
                     }
                 } catch {
-                    NSLog("[Transcribe][draft] FAILED: \(error)")
+                    NSLog("[Transcribe] fast draft failed (falling back to Whisper only): \(error)")
                 }
             }
             if identifySpeakers {
                 Task { @MainActor in
                     do {
                         cachedSpeakerSegments = try await diarizationService.diarize(fileURL: fileURL)
-                        NSLog("[Transcribe][diarize-draftpath] got \(cachedSpeakerSegments?.count ?? -1) speaker segments")
                         await applyDiarizationIfPossible()
                     } catch {
-                        NSLog("[Transcribe][diarize-draftpath] FAILED: \(error)")
+                        NSLog("[Transcribe] background diarization failed: \(error)")
                     }
                 }
             }
@@ -2166,7 +2167,22 @@ class TranscriptionViewModel: ObservableObject {
                             self.segments = update.segments
                             self.wordCount = self.transcribedText.split(separator: " ").count
                             self.statusMessage = ""
-                            
+
+                            // Live speaker refinement: once diarization has clustered
+                            // speakers (from the draft), re-merge them against the
+                            // sharpening Whisper text so the speaker blocks improve
+                            // front-to-back. Throttled by covered-time so the diarized
+                            // list reflows periodically, not every tick.
+                            if let speakers = self.cachedSpeakerSegments, !speakers.isEmpty,
+                               update.coveredUntil - self.lastLiveDiarizeUntil >= self.liveDiarizeIntervalSeconds {
+                                self.lastLiveDiarizeUntil = update.coveredUntil
+                                let whisperSegments = update.segments
+                                let covered = update.coveredUntil
+                                Task { @MainActor in
+                                    await self.applyLiveDiarization(whisperSegments: whisperSegments, coveredUntil: covered)
+                                }
+                            }
+
                             // Start transcription timer on first real content
                             if self.transcriptionStartTime == nil {
                                 self.transcriptionStartTime = Date()
@@ -2423,7 +2439,6 @@ class TranscriptionViewModel: ObservableObject {
 
         // Auto-run diarization when the user opted in via Settings.
         let autoDiarize = UserDefaults.standard.bool(forKey: "identifySpeakers", default: true)
-        NSLog("[Transcribe][finish] autoDiarize=\(autoDiarize) cachedSpeakers=\(cachedSpeakerSegments?.count ?? -1) segments=\(segments.count)")
         if autoDiarize {
             if cachedSpeakerSegments != nil {
                 // Draft path already clustered speakers; just re-merge against the
@@ -2491,6 +2506,19 @@ class TranscriptionViewModel: ObservableObject {
         guard let speakers = cachedSpeakerSegments else { return }
         let source = (!isShowingDraft && !segments.isEmpty) ? segments : draftSegments
         let words: [DiarizationMerger.Word] = source.flatMap { seg in
+            (seg.words ?? []).map { DiarizationMerger.Word(text: $0.word, start: $0.start, end: $0.end) }
+        }
+        guard !words.isEmpty else { return }
+        diarizedUtterances = await diarizationMerger.merge(words: words, speakers: speakers)
+    }
+
+    /// Live re-merge during streaming: build a combined transcript of the accurate
+    /// Whisper segments (0…coveredUntil) plus the draft tail, then re-cluster words
+    /// into speaker turns so the diarized view sharpens front-to-back with Whisper.
+    private func applyLiveDiarization(whisperSegments: [TranscriptionSegmentData], coveredUntil: TimeInterval) async {
+        guard let speakers = cachedSpeakerSegments, !speakers.isEmpty else { return }
+        let combined = DraftSplice.combinedSegments(whisper: whisperSegments, draft: draftSegments, coveredUntil: coveredUntil)
+        let words: [DiarizationMerger.Word] = combined.flatMap { seg in
             (seg.words ?? []).map { DiarizationMerger.Word(text: $0.word, start: $0.start, end: $0.end) }
         }
         guard !words.isEmpty else { return }

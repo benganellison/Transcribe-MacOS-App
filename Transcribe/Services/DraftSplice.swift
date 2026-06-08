@@ -17,4 +17,11 @@ enum DraftSplice {
             .filter { !$0.isEmpty }
             .joined(separator: " ")
     }
+
+    /// Combined segment list for live diarization: the accurate Whisper segments
+    /// (covering 0…t) followed by the not-yet-covered draft tail. Lets speaker blocks
+    /// sharpen front-to-back during streaming instead of staying on the rough draft.
+    static func combinedSegments(whisper: [TranscriptionSegmentData], draft: [TranscriptionSegmentData], coveredUntil t: TimeInterval) -> [TranscriptionSegmentData] {
+        whisper + tailDraft(draft, after: t)
+    }
 }

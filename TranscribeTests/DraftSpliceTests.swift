@@ -28,4 +28,12 @@ final class DraftSpliceTests: XCTestCase {
         let text = DraftSplice.combinedText(whisperText: "ACCURATE", draft: draft, coveredUntil: 3.0)
         XCTAssertEqual(text, "ACCURATE b c")
     }
+
+    func testCombinedSegmentsIsWhisperPlusDraftTail() {
+        let whisper = [seg(0, 3, "ACCURATE")]
+        let draft = [seg(0, 2, "a"), seg(2, 4, "b"), seg(4, 6, "c")]
+        let combined = DraftSplice.combinedSegments(whisper: whisper, draft: draft, coveredUntil: 3.0)
+        // Accurate Whisper segment(s) first, then only the not-yet-covered draft tail.
+        XCTAssertEqual(combined.map(\.text), ["ACCURATE", "b", "c"])
+    }
 }
