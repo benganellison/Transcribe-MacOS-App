@@ -2515,6 +2515,10 @@ class TranscriptionViewModel: ObservableObject {
             let speakers = try await diarizationService.diarize(fileURL: url, expectedSpeakers: expectedSpeakers)
             let utterances = await diarizationMerger.merge(words: words, speakers: speakers)
             self.diarizedUtterances = utterances
+            // TEMP DIAG (manual path): diarizer's raw audio speaker count vs merged turns.
+            let rawSpeakers = Set(speakers.map(\.speakerLabel)).count
+            let turnSpeakers = Set(utterances.map(\.speakerID)).count
+            self.diarizationError = "DIAG(manual) rawSpeakers=\(rawSpeakers) words=\(words.count)(whisper) turns=\(utterances.count)/\(turnSpeakers)"
         } catch {
             self.diarizationError = error.localizedDescription
         }
@@ -2539,6 +2543,11 @@ class TranscriptionViewModel: ObservableObject {
         guard !words.isEmpty else { return }
         let merged = await diarizationMerger.merge(words: words, speakers: speakers)
         diarizedUtterances = usingDraft ? Self.markWords(merged, refined: false) : merged
+        // TEMP DIAG (auto path): diarizer's raw audio speaker count vs merged turns, and
+        // which words fed the merge. Compare against the manual DIAG to locate the cause.
+        let rawSpeakers = Set(speakers.map(\.speakerLabel)).count
+        let turnSpeakers = Set(merged.map(\.speakerID)).count
+        diarizationError = "DIAG(auto) rawSpeakers=\(rawSpeakers) words=\(words.count)(\(usingDraft ? "draft" : "whisper")) turns=\(merged.count)/\(turnSpeakers)"
     }
 
     /// Returns turns with every word's `refined` flag set (draft = false → blue).
