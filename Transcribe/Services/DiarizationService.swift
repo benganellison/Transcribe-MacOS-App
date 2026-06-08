@@ -30,6 +30,14 @@ actor DiarizationService {
         }
     }
 
+    /// Releases the loaded diarizer models to free memory once diarization is done
+    /// (the completion re-merge only needs the cached segments + the word merger, no
+    /// model). A manual re-run reloads on demand.
+    func release() {
+        sortformerModels = nil
+        lseendModel = nil
+    }
+
     /// Sortformer handles up to 4 speakers with the most stable identities; anything
     /// larger or unknown uses LS-EEND (up to 10).
     static func backend(forExpectedSpeakers expected: Int?) -> Backend {

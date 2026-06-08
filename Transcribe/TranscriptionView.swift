@@ -2134,6 +2134,7 @@ class TranscriptionViewModel: ObservableObject {
                 } catch {
                     NSLog("[Transcribe] fast draft failed (falling back to Whisper only): \(error)")
                 }
+                await draftService.release()  // free Parakeet before Whisper runs
                 // 2. Diarization off-main, then group the draft words into speaker turns.
                 if identifySpeakers {
                     statusMessage = localized("identifying_speakers")
@@ -2145,6 +2146,7 @@ class TranscriptionViewModel: ObservableObject {
                     } catch {
                         NSLog("[Transcribe] diarization failed: \(error)")
                     }
+                    await diarizationService.release()  // free the diarizer before Whisper
                 }
                 // 3. Whisper refinement — wait for the prewarm so the model is loaded.
                 _ = await prewarmTask.value

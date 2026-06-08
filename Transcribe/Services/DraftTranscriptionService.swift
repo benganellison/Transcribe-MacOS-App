@@ -20,6 +20,12 @@ actor DraftTranscriptionService {
         }
     }
 
+    /// Releases the Parakeet model to free memory once the draft is done (it isn't
+    /// needed again until a re-transcribe), so it doesn't compete with Whisper.
+    func release() {
+        manager = nil
+    }
+
     func prepare() async throws {
         if manager != nil { return }
         do {
