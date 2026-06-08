@@ -1,47 +1,21 @@
 import Foundation
 import FluidAudio
 
-/// Wraps FluidAudio's offline diarizer. Loads CoreML models lazily (auto-download
-/// on first use), resamples any audio file to 16kHz mono internally, runs
-/// diarization, and returns framework-agnostic `SpeakerSegment` values.
+/// Wraps FluidAudio's streaming diarizers (Sortformer / LS-EEND), choosing the model
+/// from an estimated speaker count and returning framework-agnostic `SpeakerSegment`s.
 ///
-/// This is the ONLY file that imports or references FluidAudio types — everything
-/// downstream sees only `SpeakerSegment`.
+/// - 1–4 expected speakers → **Sortformer** (4 fixed slots, very stable identities).
+/// - 5–10 / unknown → **LS-EEND** dihard3 (variable slots up to 10, CPU).
+///
+/// This is the ONLY file that imports or references FluidAudio diarizer types —
+/// everything downstream sees only `SpeakerSegment`.
 @MainActor
 final class DiarizationService {
-    private var manager: OfflineDiarizerManager?
-    /// Signature of the options the cached `manager` was built with, so we rebuild
-    /// it only when tuning actually changes.
-    private var loadedSignature: String?
+    enum Backend: Equatable { case sortformer, lseend }
 
-    /// Tunable diarization parameters surfaced to the UI.
-    struct Options: Equatable {
-        /// Lower bound on the number of speakers. Forces the clustering to separate
-        /// at least this many — use it to pull apart voices that get merged.
-        var minSpeakers: Int?
-
-        /// Upper bound on the number of speakers. Caps the count — use it to stop a
-        /// single varied speaker from being over-split into several. If minSpeakers
-        /// equals maxSpeakers, the count is effectively fixed.
-        var maxSpeakers: Int?
-
-        /// Clustering distance threshold (Euclidean, unit-normalized embeddings).
-        /// Lower = more willing to split into separate speakers; higher = more merging.
-        /// FluidAudio's community default is 0.6.
-        var clusteringThreshold: Double
-
-        /// Minimum speech length (seconds) that still gets a voice embedding.
-        /// FluidAudio's default of 1.0 silently drops sub-second turns, which makes
-        /// short self-introductions disappear; we default lower to catch them.
-        var minSegmentDuration: Double
-
-        static let `default` = Options(
-            minSpeakers: nil,
-            maxSpeakers: nil,
-            clusteringThreshold: 0.6,
-            minSegmentDuration: 0.45
-        )
-    }
+    /// Loaded models cached per backend so re-runs don't re-download/compile.
+    private var sortformerModels: SortformerModels?
+    private var lseendModel: LSEENDModel?
 
     enum DiarizationError: LocalizedError {
         case modelLoadFailed(String)
@@ -54,88 +28,76 @@ final class DiarizationService {
         }
     }
 
-    /// Builds a FluidAudio config from `.community` defaults, overriding only the
-    /// tunable fields. The speaker-count and min-segment knobs live on the nested
-    /// structs (the convenience initializer doesn't expose them).
-    private func makeConfig(_ options: Options) -> OfflineDiarizerConfig {
-        var clustering = OfflineDiarizerConfig.Clustering.community
-        clustering.threshold = options.clusteringThreshold
-        // Use a range (min/max) rather than forcing an exact count: forcing numSpeakers
-        // makes VBx manufacture splits to hit the number, over-splitting a dominant
-        // speaker. A range lets it choose the natural count within bounds.
-        if let mn = options.minSpeakers, mn > 0 {
-            clustering.minSpeakers = mn
-        }
-        if let mx = options.maxSpeakers, mx > 0 {
-            clustering.maxSpeakers = mx
-        }
-
-        var embedding = OfflineDiarizerConfig.Embedding.community
-        embedding.minSegmentDurationSeconds = options.minSegmentDuration
-
-        return OfflineDiarizerConfig(embedding: embedding, clustering: clustering)
+    /// Sortformer handles up to 4 speakers with the most stable identities; anything
+    /// larger or unknown uses LS-EEND (up to 10).
+    static func backend(forExpectedSpeakers expected: Int?) -> Backend {
+        if let n = expected, n >= 1, n <= 4 { return .sortformer }
+        return .lseend
     }
 
-    private func signature(_ options: Options) -> String {
-        let mn = options.minSpeakers.map(String.init) ?? "-"
-        let mx = options.maxSpeakers.map(String.init) ?? "-"
-        return "\(mn)|\(mx)|\(options.clusteringThreshold)|\(options.minSegmentDuration)"
-    }
-
-    /// Loads (and downloads on first use) the CoreML diarization models, rebuilding
-    /// the manager when tuning options change so the new config takes effect.
-    func prepare(_ options: Options) async throws {
-        let sig = signature(options)
-        if manager != nil && loadedSignature == sig { return }
+    /// Runs diarization on any audio file and returns ordered speaker segments.
+    /// FluidAudio resamples the file internally, so the original URL is passed directly.
+    func diarize(fileURL: URL, expectedSpeakers: Int?) async throws -> [SpeakerSegment] {
+        let timeline: DiarizerTimeline
         do {
-            let m = OfflineDiarizerManager(config: makeConfig(options))
-            try await m.prepareModels()
-            manager = m
-            loadedSignature = sig
+            switch Self.backend(forExpectedSpeakers: expectedSpeakers) {
+            case .sortformer:
+                let models = try await loadedSortformerModels()
+                let diarizer = SortformerDiarizer(config: .default, timelineConfig: .sortformerDefault)
+                diarizer.initialize(models: models)
+                timeline = try diarizer.processComplete(audioFileURL: fileURL, keepingEnrolledSpeakers: false)
+            case .lseend:
+                let model = try await loadedLSEENDModel()
+                let diarizer = try LSEENDDiarizer(model: model)
+                timeline = try diarizer.processComplete(audioFileURL: fileURL, keepingEnrolledSpeakers: false)
+            }
+        } catch let e as DiarizationError {
+            throw e
+        } catch {
+            throw DiarizationError.processingFailed(error.localizedDescription)
+        }
+        return Self.extractSegments(from: timeline)
+    }
+
+    // MARK: - Model loading (cached)
+
+    private func loadedSortformerModels() async throws -> SortformerModels {
+        if let m = sortformerModels { return m }
+        do {
+            let m = try await SortformerModels.loadFromHuggingFace(config: .default)
+            sortformerModels = m
+            return m
         } catch {
             throw DiarizationError.modelLoadFailed(error.localizedDescription)
         }
     }
 
-    /// Runs diarization on any audio file and returns ordered speaker segments.
-    /// FluidAudio's `AudioConverter` resamples to the 16kHz mono Float32 the
-    /// pipeline expects, so the original recording URL can be passed directly.
-    func diarize(fileURL: URL, options: Options = .default) async throws -> [SpeakerSegment] {
-        try await prepare(options)
-        guard let manager else { throw DiarizationError.modelLoadFailed("manager nil") }
+    private func loadedLSEENDModel() async throws -> LSEENDModel {
+        if let m = lseendModel { return m }
         do {
-            let samples = try AudioConverter().resampleAudioFile(fileURL)
-            let result = try await manager.process(audio: samples)
-
-            // Map raw diarizer speaker IDs to "Speaker 1/2/3…" in first-appearance
-            // order. The FluidAudio segment type is inferred (never named here), and
-            // `speakerId` is stringified via String(describing:) so this works whether
-            // FluidAudio types it as Int or String. These property names
-            // (`speakerId`, `startTimeSeconds`, `endTimeSeconds`) are the only
-            // FluidAudio surface in the app — adjust here if the resolved API differs.
-            var mapping: [String: String] = [:]
-            var next = 1
-            let sorted = result.segments.sorted { $0.startTimeSeconds < $1.startTimeSeconds }
-            return sorted.map { seg in
-                let raw = String(describing: seg.speakerId)
-                let label: String
-                if let existing = mapping[raw] {
-                    label = existing
-                } else {
-                    label = "Speaker \(next)"
-                    mapping[raw] = label
-                    next += 1
-                }
-                return SpeakerSegment(
-                    speakerLabel: label,
-                    start: TimeInterval(seg.startTimeSeconds),
-                    end: TimeInterval(seg.endTimeSeconds)
-                )
-            }
-        } catch let error as DiarizationError {
-            throw error
+            let m = try await LSEENDModel.loadFromHuggingFace(variant: .dihard3)
+            lseendModel = m
+            return m
         } catch {
-            throw DiarizationError.processingFailed(error.localizedDescription)
+            throw DiarizationError.modelLoadFailed(error.localizedDescription)
         }
+    }
+
+    // MARK: - Timeline → SpeakerSegment
+
+    /// Flattens every speaker's finalized segments into framework-agnostic rows and
+    /// hands them to the pure mapper for first-appearance "Speaker N" labeling.
+    private static func extractSegments(from timeline: DiarizerTimeline) -> [SpeakerSegment] {
+        var rows: [SpeakerSegmentMapper.Row] = []
+        for (_, speaker) in timeline.speakers {
+            for seg in speaker.finalizedSegments {
+                rows.append(SpeakerSegmentMapper.Row(
+                    speakerIndex: speaker.index,
+                    start: TimeInterval(seg.startTime),
+                    end: TimeInterval(seg.endTime)
+                ))
+            }
+        }
+        return SpeakerSegmentMapper.map(rows)
     }
 }

@@ -175,6 +175,8 @@ class SettingsManager: ObservableObject {
             "fastDraftThresholdMinutes": 5.0,
             // Speaker diarization runs automatically after transcription by default.
             "identifySpeakers": true,
+            // 0 = auto (model picks itself by content); 1–4 → Sortformer, 5–10 → LS-EEND.
+            "expectedSpeakers": 0,
             "recordingQuality": "high",
             "enableNoiseReduction": true,
             "enableSilenceTrimming": true,

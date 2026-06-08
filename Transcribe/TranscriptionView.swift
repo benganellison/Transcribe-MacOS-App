@@ -46,9 +46,7 @@ struct TranscriptionView: View {
     @State private var renameFieldText: String = ""
     @State private var isAutoNaming = false
     @State private var showDiarizationPopover = false
-    @State private var minSpeakersText: String = ""
-    @State private var maxSpeakersText: String = ""
-    @State private var diarizationThreshold: Double = DiarizationService.Options.default.clusteringThreshold
+    @AppStorage("expectedSpeakers") private var expectedSpeakers: Int = 0
 
     @State private var isEditingTranscript = false
     @State private var followPlayback = true
@@ -358,38 +356,22 @@ struct TranscriptionView: View {
                 .foregroundColor(.textPrimary)
 
             VStack(alignment: .leading, spacing: 6) {
-                Text(localized("speaker_range_label"))
+                Text(localized("expected_speakers_label"))
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(.textSecondary)
                 HStack(spacing: 8) {
-                    TextField(localized("min_speakers_placeholder"), text: $minSpeakersText)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 70)
-                    Text("–")
-                        .foregroundColor(.textTertiary)
-                    TextField(localized("max_speakers_placeholder"), text: $maxSpeakersText)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 70)
+                    Stepper(value: $expectedSpeakers, in: 0...10) {
+                        Text(expectedSpeakers == 0
+                             ? localized("expected_speakers_placeholder")
+                             : "\(expectedSpeakers)")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.textPrimary)
+                    }
                 }
-                Text(localized("speaker_range_help"))
+                Text(localized("expected_speakers_help"))
                     .font(.system(size: 11))
                     .foregroundColor(.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text(localized("diarization_sensitivity_label"))
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(.textSecondary)
-                Slider(value: $diarizationThreshold, in: 0.4...0.9)
-                    .tint(.primaryAccent)
-                HStack {
-                    Text(localized("more_speakers"))
-                    Spacer()
-                    Text(localized("fewer_speakers"))
-                }
-                .font(.system(size: 10))
-                .foregroundColor(.textTertiary)
             }
 
             Button(action: { runDiarization() }) {
@@ -409,18 +391,12 @@ struct TranscriptionView: View {
         .frame(width: 280)
     }
 
-    /// Reads the popover inputs and kicks off a diarization pass (without re-transcribing).
+    /// Kicks off a diarization pass (without re-transcribing) using the expected
+    /// speaker count (0 = auto → model picks itself).
     private func runDiarization() {
-        let minCount = Int(minSpeakersText.trimmingCharacters(in: .whitespaces))
-        let maxCount = Int(maxSpeakersText.trimmingCharacters(in: .whitespaces))
-        let options = DiarizationService.Options(
-            minSpeakers: minCount,
-            maxSpeakers: maxCount,
-            clusteringThreshold: diarizationThreshold,
-            minSegmentDuration: DiarizationService.Options.default.minSegmentDuration
-        )
+        let expected = expectedSpeakers > 0 ? expectedSpeakers : nil
         showDiarizationPopover = false
-        Task { await viewModel.diarize(options: options) }
+        Task { await viewModel.diarize(expectedSpeakers: expected) }
     }
     
     private var transcriptionStats: some View {
@@ -2134,8 +2110,10 @@ class TranscriptionViewModel: ObservableObject {
                 // 2. Diarization, then group the draft words into speaker turns (blue).
                 if identifySpeakers {
                     statusMessage = localized("identifying_speakers")
+                    let expected = UserDefaults.standard.integer(forKey: "expectedSpeakers")
                     do {
-                        cachedSpeakerSegments = try await diarizationService.diarize(fileURL: fileURL)
+                        cachedSpeakerSegments = try await diarizationService.diarize(
+                            fileURL: fileURL, expectedSpeakers: expected > 0 ? expected : nil)
                         await applyDiarizationIfPossible()
                     } catch {
                         NSLog("[Transcribe] diarization failed: \(error)")
@@ -2469,7 +2447,8 @@ class TranscriptionViewModel: ObservableObject {
         if autoDiarize {
             if cachedSpeakerSegments == nil {
                 // Non-draft path (or diarization failed earlier): one clean pass now.
-                Task { await self.diarize() }
+                let expected = UserDefaults.standard.integer(forKey: "expectedSpeakers")
+                Task { await self.diarize(expectedSpeakers: expected > 0 ? expected : nil) }
             } else if diarizedUtterances.isEmpty {
                 // Draft path where the draft failed: build turns from final Whisper words.
                 Task { @MainActor in await self.applyDiarizationIfPossible() }
@@ -2484,7 +2463,7 @@ class TranscriptionViewModel: ObservableObject {
     func diarize(
         audioURL: URL? = nil,
         segments providedSegments: [TranscriptionSegmentData]? = nil,
-        options: DiarizationService.Options = .default
+        expectedSpeakers: Int? = nil
     ) async {
         let url = audioURL ?? fileURL
         let segs = providedSegments ?? self.segments
@@ -2513,14 +2492,9 @@ class TranscriptionViewModel: ObservableObject {
         }.filter { !$0.text.isEmpty }
 
         do {
-            let speakers = try await diarizationService.diarize(fileURL: url, options: options)
+            let speakers = try await diarizationService.diarize(fileURL: url, expectedSpeakers: expectedSpeakers)
             let utterances = await diarizationMerger.merge(words: words, speakers: speakers)
             self.diarizedUtterances = utterances
-            // TEMP DIAG: compare the manual re-run's options + speaker count to the auto
-            // path's. If this shows distinct>1 with the same threshold the auto path uses
-            // (0.6), the difference is runtime state, not options.
-            let distinct = Set(speakers.map(\.speakerLabel)).count
-            self.diarizationError = "DIAG(manual) thr=\(options.clusteringThreshold) min=\(options.minSpeakers.map(String.init) ?? "-") max=\(options.maxSpeakers.map(String.init) ?? "-") spk=\(speakers.count) distinct=\(distinct)"
         } catch {
             self.diarizationError = error.localizedDescription
         }
@@ -2543,22 +2517,7 @@ class TranscriptionViewModel: ObservableObject {
             (seg.words ?? []).map { DiarizationMerger.Word(text: $0.word, start: $0.start, end: $0.end) }
         }
         guard !words.isEmpty else { return }
-
-        // DIAGNOSTIC: compare the diarizer's speaker segments to the word timeline.
-        // If distinctSpeakers > 1 but the merge yields 1 turn, and the word time-range
-        // doesn't match the speaker time-range, the draft (Parakeet) word timestamps are
-        // misaligned with the audio seconds the diarizer uses.
-        let distinctSpeakers = Set(speakers.map(\.speakerLabel)).count
-        let wLo = words.map(\.start).min() ?? -1, wHi = words.map(\.end).max() ?? -1
-        let sLo = speakers.map(\.start).min() ?? -1, sHi = speakers.map(\.end).max() ?? -1
-        NSLog("[Transcribe][diar] usingDraft=\(usingDraft) speakerSegments=\(speakers.count) distinctSpeakers=\(distinctSpeakers) words=\(words.count) wordTime=\(wLo)…\(wHi) speakerTime=\(sLo)…\(sHi)")
         let merged = await diarizationMerger.merge(words: words, speakers: speakers)
-        let distinctTurns = Set(merged.map(\.speakerID)).count
-        NSLog("[Transcribe][diar] merged into \(merged.count) turns across \(distinctTurns) distinct speakers")
-        // TEMP on-screen diagnostic (surfaces even when NSLog doesn't): shows whether the
-        // diarizer found multiple speakers and whether the word timeline matches the
-        // speaker timeline. Remove once the one-speaker cause is confirmed.
-        diarizationError = "DIAG spk=\(speakers.count) distinct=\(distinctSpeakers) turns=\(merged.count)/\(distinctTurns) wordT=\(Int(wLo))-\(Int(wHi)) spkT=\(Int(sLo))-\(Int(sHi)) draft=\(usingDraft)"
         diarizedUtterances = usingDraft ? Self.markWords(merged, refined: false) : merged
     }
 
