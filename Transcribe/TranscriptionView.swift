@@ -2118,32 +2118,28 @@ class TranscriptionViewModel: ObservableObject {
         let identifySpeakers = UserDefaults.standard.bool(forKey: "identifySpeakers", default: true)
         if draftEnabled && duration >= thresholdSec {
             isShowingDraft = true
-            // Order matters for clustering quality: the diarizer collapses to one
-            // speaker when it runs right after Parakeet, but clusters correctly on an
-            // idle Neural Engine (same as the manual re-run). So diarize FIRST, then
-            // draft, then Whisper. Word timestamps from the draft align with the audio,
-            // so grouping the draft into the (correct) speakers works.
+            statusMessage = localized("draft_refining")
+            // draft → identify speakers → refine with Whisper.
             Task { @MainActor in
-                // 1. Diarization on an idle engine → correct speaker segments.
-                if identifySpeakers {
-                    statusMessage = localized("identifying_speakers")
-                    do {
-                        cachedSpeakerSegments = try await diarizationService.diarize(fileURL: fileURL)
-                    } catch {
-                        NSLog("[Transcribe] diarization failed: \(error)")
-                    }
-                }
-                // 2. Fast Parakeet draft → blue transcript, grouped into the speakers.
-                statusMessage = localized("draft_refining")
+                // 1. Fast Parakeet draft → full rough (blue) transcript.
                 do {
                     let segs = try await draftService.transcribe(fileURL: fileURL)
                     if isShowingDraft {
                         draftSegments = segs
                         refreshDraftDisplay()
-                        await applyDiarizationIfPossible()
                     }
                 } catch {
                     NSLog("[Transcribe] fast draft failed (falling back to Whisper only): \(error)")
+                }
+                // 2. Diarization, then group the draft words into speaker turns (blue).
+                if identifySpeakers {
+                    statusMessage = localized("identifying_speakers")
+                    do {
+                        cachedSpeakerSegments = try await diarizationService.diarize(fileURL: fileURL)
+                        await applyDiarizationIfPossible()
+                    } catch {
+                        NSLog("[Transcribe] diarization failed: \(error)")
+                    }
                 }
                 // 3. Whisper refinement: streams accurate words, whitening in place.
                 startWhisperKitTranscription()
@@ -2520,6 +2516,11 @@ class TranscriptionViewModel: ObservableObject {
             let speakers = try await diarizationService.diarize(fileURL: url, options: options)
             let utterances = await diarizationMerger.merge(words: words, speakers: speakers)
             self.diarizedUtterances = utterances
+            // TEMP DIAG: compare the manual re-run's options + speaker count to the auto
+            // path's. If this shows distinct>1 with the same threshold the auto path uses
+            // (0.6), the difference is runtime state, not options.
+            let distinct = Set(speakers.map(\.speakerLabel)).count
+            self.diarizationError = "DIAG(manual) thr=\(options.clusteringThreshold) min=\(options.minSpeakers.map(String.init) ?? "-") max=\(options.maxSpeakers.map(String.init) ?? "-") spk=\(speakers.count) distinct=\(distinct)"
         } catch {
             self.diarizationError = error.localizedDescription
         }
