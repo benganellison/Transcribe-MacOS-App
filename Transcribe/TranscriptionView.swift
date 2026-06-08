@@ -449,7 +449,10 @@ struct TranscriptionView: View {
         HStack {
             HStack(spacing: 10) {
                 AccentSpinner(size: 16, lineWidth: 2)
-                Text(localized("transcribing"))
+                // Reflect the actual phase (e.g. "Identifying speakers…") instead of a
+                // generic "Transcribing…" — isTranscribing stays true across the draft,
+                // diarization, and Whisper phases.
+                Text(viewModel.statusMessage.isEmpty ? localized("transcribing") : viewModel.statusMessage)
                     .font(.system(size: 13, weight: .medium))
                     .foregroundColor(.textPrimary)
             }
