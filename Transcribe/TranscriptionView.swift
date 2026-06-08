@@ -2107,9 +2107,11 @@ class TranscriptionViewModel: ObservableObject {
             statusMessage = localized("draft_generating")
             // draft → identify speakers → refine with Whisper.
             Task { @MainActor in
-                // 1. Fast Parakeet draft → full rough (blue) transcript.
+                // 1. Fast Parakeet draft → full rough (blue) transcript. Pass the
+                //    selected language so Swedish audio isn't decoded as English.
+                let draftLanguage = LanguageManager.shared.selectedLanguage.code
                 do {
-                    let segs = try await draftService.transcribe(fileURL: fileURL)
+                    let segs = try await draftService.transcribe(fileURL: fileURL, languageCode: draftLanguage)
                     if isShowingDraft {
                         draftSegments = segs
                         refreshDraftDisplay()

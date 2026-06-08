@@ -34,13 +34,17 @@ final class DraftTranscriptionService {
 
     /// Transcribes the whole file to draft segments (word-timed). FluidAudio's
     /// AudioConverter handles format internally.
-    func transcribe(fileURL: URL) async throws -> [TranscriptionSegmentData] {
+    /// - Parameter languageCode: ISO code (e.g. "sv"); "auto"/nil/unsupported → auto-detect.
+    ///   Passed to Parakeet v3 as a script-aware hint so Swedish audio isn't mis-decoded
+    ///   as English.
+    func transcribe(fileURL: URL, languageCode: String?) async throws -> [TranscriptionSegmentData] {
         try await prepare()
         guard let manager else { throw DraftError.modelLoadFailed("manager nil") }
         do {
-            // FluidAudio's TDT transcribe needs a decoder state (inout); language nil = auto-detect.
+            // FluidAudio's TDT transcribe needs a decoder state (inout).
             var decoderState = try TdtDecoderState()
-            let result = try await manager.transcribe(fileURL, decoderState: &decoderState, language: nil)
+            let language: Language? = languageCode.flatMap { $0 == "auto" ? nil : Language(rawValue: $0) }
+            let result = try await manager.transcribe(fileURL, decoderState: &decoderState, language: language)
             let tokens = (result.tokenTimings ?? []).map { timing in
                 ParakeetDraftParser.Token(text: timing.token, start: timing.startTime, end: timing.endTime, confidence: timing.confidence)
             }
