@@ -2440,13 +2440,13 @@ class TranscriptionViewModel: ObservableObject {
         // Auto-run diarization when the user opted in via Settings.
         let autoDiarize = UserDefaults.standard.bool(forKey: "identifySpeakers", default: true)
         if autoDiarize {
-            if cachedSpeakerSegments != nil {
-                // Draft path already clustered speakers; just re-merge against the
-                // accurate final words instead of re-running diarization.
-                Task { @MainActor in await self.applyDiarizationIfPossible() }
-            } else {
-                Task { await self.diarize() }
-            }
+            // Always run a fresh diarization now that transcription is finished and the
+            // ML engines are idle. The `cachedSpeakerSegments` computed during streaming
+            // ran concurrently with Parakeet + Whisper and tends to under-cluster (one
+            // speaker) under that contention, so it's only used for the live preview —
+            // never as the final result. This matches the manual "Re-run" path.
+            cachedSpeakerSegments = nil
+            Task { await self.diarize() }
         }
     }
 
