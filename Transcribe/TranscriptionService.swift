@@ -16,6 +16,16 @@ class TranscriptionService {
     private let languageManager = LanguageManager.shared
     private var whisperKitService: WhisperKitService?
     
+    /// Loads (and compiles) the WhisperKit model ahead of time so the first
+    /// transcription window doesn't pay the multi-minute load/compile cost. Safe to call
+    /// during the draft/diarization wait; `transcribe` reuses this loaded instance.
+    func prewarm(modelId: String) async {
+        if whisperKitService == nil {
+            whisperKitService = WhisperKitService()
+        }
+        try? await whisperKitService?.initialize(modelId: modelId)
+    }
+
     func transcribe(fileURL: URL, forceWordTimestamps: Bool = false) -> AsyncThrowingStream<TranscriptionUpdate, Error> {
         AsyncThrowingStream { continuation in
             Task {

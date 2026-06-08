@@ -2114,6 +2114,14 @@ class TranscriptionViewModel: ObservableObject {
             statusMessage = localized("draft_generating")
             // draft → diarize (off-main, ~1.5 min, UI stays responsive) → refine w/ Whisper.
             Task { @MainActor in
+                // 0. Prewarm the Whisper model concurrently during the draft/diarization
+                //    wait, so the first Whisper window doesn't pay the load/compile cost
+                //    (the ~2.5-min "first chunk" stall on large models).
+                let modelId = UserDefaults.standard.string(forKey: "selectedTranscriptionModel") ?? ""
+                transcriptionService = TranscriptionService()
+                let svc = transcriptionService
+                let prewarmTask = Task { await svc?.prewarm(modelId: modelId) }
+
                 // 1. Fast Parakeet draft → full rough (blue) transcript. Pass the selected
                 //    language so Swedish audio isn't decoded as English.
                 let draftLanguage = LanguageManager.shared.selectedLanguage.code
@@ -2138,7 +2146,8 @@ class TranscriptionViewModel: ObservableObject {
                         NSLog("[Transcribe] diarization failed: \(error)")
                     }
                 }
-                // 3. Whisper refinement.
+                // 3. Whisper refinement — wait for the prewarm so the model is loaded.
+                _ = await prewarmTask.value
                 statusMessage = localized("draft_refining")
                 isRefiningWithWhisper = true
                 startWhisperKitTranscription()
@@ -2152,8 +2161,11 @@ class TranscriptionViewModel: ObservableObject {
     
     private func startWhisperKitTranscription() {
         // Original streaming WhisperKit implementation
-        transcriptionService = TranscriptionService()
-        
+        // Reuse the prewarmed service from the draft path if present; else create one.
+        if transcriptionService == nil {
+            transcriptionService = TranscriptionService()
+        }
+
         Task {
             do {
                 // Stream transcription updates. Force word timestamps when the user
@@ -2166,39 +2178,44 @@ class TranscriptionViewModel: ObservableObject {
                             // Show as status text, don't set as transcribed text
                             self.statusMessage = update.text
                         } else {
-                            // Actual transcription content
-                            if self.isShowingDraft && !self.draftSegments.isEmpty {
-                                // Splice: accurate Whisper text up to coveredUntil,
-                                // draft tail beyond it.
-                                self.transcribedText = DraftSplice.combinedText(
-                                    whisperText: update.text,
-                                    draft: self.draftSegments,
-                                    coveredUntil: update.coveredUntil)
-                            } else {
-                                self.transcribedText = update.text
-                            }
+                            // Actual transcription content. Cheap, every update:
                             self.progress = update.progress
                             self.segments = update.segments
-                            self.wordCount = self.transcribedText.split(separator: " ").count
                             self.statusMessage = ""
 
-                            // Progressive refinement by WORD POSITION (not timestamp): keep
-                            // the draft's word array fixed (count, timings, speaker turns)
-                            // and swap each word's text to the matching Whisper word left-to-
-                            // right, flipping it blue→white. No count/structure change → no
-                            // reflow. The exact structure lands via the completion re-merge.
-                            if !self.diarizedUtterances.isEmpty,
-                               Date().timeIntervalSince(self.lastRefineAt) >= self.refineMinInterval {
-                                let whisperWords = update.text.split(whereSeparator: { $0 == " " || $0 == "\n" }).map(String.init)
-                                // Only refine (and re-render) when Whisper has produced new
-                                // words since last time — skip otherwise.
-                                if whisperWords.count > self.lastRefinedWordCount {
-                                    self.lastRefineAt = Date()
-                                    self.diarizedUtterances = TranscriptRefiner.replacePositional(
-                                        turns: self.diarizedUtterances,
-                                        whisperWords: whisperWords,
-                                        from: self.lastRefinedWordCount)
-                                    self.lastRefinedWordCount = whisperWords.count
+                            // Everything below is O(transcript length) — throttle it so a long
+                            // file's main thread isn't rebuilt ~5x/sec (which queues Whisper
+                            // updates and makes "3 words take 60s"). Whisper inference itself
+                            // runs off-main and is unaffected.
+                            if Date().timeIntervalSince(self.lastRefineAt) >= self.refineMinInterval {
+                                self.lastRefineAt = Date()
+                                let diarizedActive = !self.diarizedUtterances.isEmpty
+                                if diarizedActive {
+                                    // The diarized turns are the display — skip the spliced
+                                    // plain-text build (not shown). Split once, reuse.
+                                    let whisperWords = update.text.split(whereSeparator: { $0 == " " || $0 == "\n" }).map(String.init)
+                                    self.transcribedText = update.text
+                                    self.wordCount = whisperWords.count
+                                    if whisperWords.count > self.lastRefinedWordCount {
+                                        // Positional (word-index) refinement: keep the draft's
+                                        // word array fixed and swap each word's text to the
+                                        // matching Whisper word (blue→white), edge-only.
+                                        self.diarizedUtterances = TranscriptRefiner.replacePositional(
+                                            turns: self.diarizedUtterances,
+                                            whisperWords: whisperWords,
+                                            from: self.lastRefinedWordCount)
+                                        self.lastRefinedWordCount = whisperWords.count
+                                    }
+                                } else if self.isShowingDraft && !self.draftSegments.isEmpty {
+                                    // Plain view: spliced accurate text + draft tail.
+                                    self.transcribedText = DraftSplice.combinedText(
+                                        whisperText: update.text,
+                                        draft: self.draftSegments,
+                                        coveredUntil: update.coveredUntil)
+                                    self.wordCount = self.transcribedText.split(separator: " ").count
+                                } else {
+                                    self.transcribedText = update.text
+                                    self.wordCount = self.transcribedText.split(separator: " ").count
                                 }
                             }
 
