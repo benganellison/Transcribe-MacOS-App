@@ -9,8 +9,10 @@ import FluidAudio
 ///
 /// This is the ONLY file that imports or references FluidAudio diarizer types —
 /// everything downstream sees only `SpeakerSegment`.
-@MainActor
-final class DiarizationService {
+///
+/// An `actor` (not `@MainActor`): the underlying `processComplete` is a synchronous,
+/// CPU-heavy call that would otherwise block the main thread for the whole file.
+actor DiarizationService {
     enum Backend: Equatable { case sortformer, lseend }
 
     /// Loaded models cached per backend so re-runs don't re-download/compile.

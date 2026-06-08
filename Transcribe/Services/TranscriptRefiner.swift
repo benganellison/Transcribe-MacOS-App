@@ -86,16 +86,24 @@ enum TranscriptRefiner {
     ///
     /// Alignment drifts where draft and Whisper word counts diverge; that's fine for
     /// a live preview — the completion re-merge replaces this with the exact result.
-    static func replacePositional(turns: [DiarizedUtterance], whisperWords: [String]) -> [DiarizedUtterance] {
+    /// `from` is the global word index already refined on a previous call: turns whose
+    /// words all fall before it are returned untouched (cheap on long files), so each
+    /// tick only rebuilds the turns at the growing edge instead of the whole transcript.
+    static func replacePositional(turns: [DiarizedUtterance], whisperWords: [String], from: Int = 0) -> [DiarizedUtterance] {
         guard !whisperWords.isEmpty else { return turns }
         var idx = 0
         return turns.map { turn in
+            let count = turn.words?.count ?? 0
+            let turnStart = idx
+            idx += count
+            // Already fully refined on an earlier tick → leave as-is (no work, COW share).
+            if turnStart + count <= from { return turn }
             guard var words = turn.words, !words.isEmpty else { return turn }
             for w in words.indices {
-                defer { idx += 1 }
+                let g = turnStart + w
                 if words[w].isLocked { continue }
-                if idx < whisperWords.count {
-                    words[w].word = whisperWords[idx]
+                if g < whisperWords.count {
+                    words[w].word = whisperWords[g]
                     words[w].refined = true
                 } else {
                     words[w].refined = false

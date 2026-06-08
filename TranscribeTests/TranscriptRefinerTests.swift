@@ -85,6 +85,17 @@ struct TranscriptRefinerTests {
         #expect(out[1].text == "C d")
     }
 
+    @Test func testReplacePositionalFromSkipsAlreadyRefinedTurns() {
+        let turns = [
+            turn("Speaker 1", 0, 4, words: [word("A", 0, 2, refined: true), word("B", 2, 4, refined: true)]),
+            turn("Speaker 2", 4, 8, words: [word("c", 4, 6, refined: false), word("d", 6, 8, refined: false)]),
+        ]
+        // from=2: first turn (words 0,1) is fully before the frontier → left untouched.
+        let out = TranscriptRefiner.replacePositional(turns: turns, whisperWords: ["X", "Y", "C", "D"], from: 2)
+        #expect(out[0].words?.map(\.word) == ["A", "B"])   // not re-replaced with X,Y
+        #expect(out[1].words?.map(\.word) == ["C", "D"])    // edge turn refined
+    }
+
     @Test func testReplacePositionalKeepsLockedWords() {
         let turns = [turn("Speaker 1", 0, 4, words: [
             word("a", 0, 2, refined: false),

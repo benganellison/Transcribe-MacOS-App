@@ -5,8 +5,8 @@ import FluidAudio
 /// auto language detection, ~120x real-time). Produces draft segments with word
 /// timings for the progressive splice + diarized draft. The ONLY file importing
 /// FluidAudio ASR types.
-@MainActor
-final class DraftTranscriptionService {
+/// An `actor` (not `@MainActor`) so the Parakeet pass runs off the main thread.
+actor DraftTranscriptionService {
     private var manager: AsrManager?
 
     enum DraftError: LocalizedError {

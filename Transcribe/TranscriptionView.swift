@@ -1810,6 +1810,9 @@ class TranscriptionViewModel: ObservableObject {
     /// (as Whisper text flows) without re-rendering on every 0.2s callback.
     private var lastRefineAt: Date = .distantPast
     private let refineMinInterval: TimeInterval = 0.4
+    /// Global word index already refined, so each tick only rebuilds the growing edge
+    /// (not the whole transcript — the CPU hog on long files).
+    private var lastRefinedWordCount = 0
 
     // MARK: - Diarization
     @Published var diarizedUtterances: [DiarizedUtterance] = []
@@ -2073,6 +2076,7 @@ class TranscriptionViewModel: ObservableObject {
         isRefiningWithWhisper = false
         cachedSpeakerSegments = nil
         lastRefineAt = .distantPast
+        lastRefinedWordCount = 0
 
         // Start fresh
         startTranscription()
@@ -2108,24 +2112,14 @@ class TranscriptionViewModel: ObservableObject {
         if draftEnabled && duration >= thresholdSec {
             isShowingDraft = true
             statusMessage = localized("draft_generating")
-            // draft → identify speakers → refine with Whisper.
-            Task { @MainActor in
-                // 1. Fast Parakeet draft → full rough (blue) transcript. Pass the
-                //    selected language so Swedish audio isn't decoded as English.
-                let draftLanguage = LanguageManager.shared.selectedLanguage.code
-                do {
-                    let segs = try await draftService.transcribe(fileURL: fileURL, languageCode: draftLanguage)
-                    if isShowingDraft {
-                        draftSegments = segs
-                        refreshDraftDisplay()
-                    }
-                } catch {
-                    NSLog("[Transcribe] fast draft failed (falling back to Whisper only): \(error)")
-                }
-                // 2. Diarization, then group the draft words into speaker turns (blue).
-                if identifySpeakers {
-                    statusMessage = localized("identifying_speakers")
-                    let expected = UserDefaults.standard.integer(forKey: "expectedSpeakers")
+
+            // Diarization (CPU, off-main) runs CONCURRENTLY — it must not block Whisper
+            // (Neural Engine), which is the long pole. On a long file, sequencing it
+            // before Whisper left the GPU/ANE idle for minutes. Speaker turns appear when
+            // it finishes; the draft words are the scaffold.
+            if identifySpeakers {
+                let expected = UserDefaults.standard.integer(forKey: "expectedSpeakers")
+                Task { @MainActor in
                     do {
                         cachedSpeakerSegments = try await diarizationService.diarize(
                             fileURL: fileURL, expectedSpeakers: expected > 0 ? expected : nil)
@@ -2134,7 +2128,25 @@ class TranscriptionViewModel: ObservableObject {
                         NSLog("[Transcribe] diarization failed: \(error)")
                     }
                 }
-                // 3. Whisper refinement: streams accurate text over the draft.
+            }
+
+            Task { @MainActor in
+                // Fast Parakeet draft → full rough (blue) transcript. Pass the selected
+                // language so Swedish audio isn't decoded as English.
+                let draftLanguage = LanguageManager.shared.selectedLanguage.code
+                do {
+                    let segs = try await draftService.transcribe(fileURL: fileURL, languageCode: draftLanguage)
+                    if isShowingDraft {
+                        draftSegments = segs
+                        refreshDraftDisplay()
+                        // If diarization already finished (it runs concurrently), build the
+                        // speaker turns now that the draft scaffold exists.
+                        if cachedSpeakerSegments != nil { await applyDiarizationIfPossible() }
+                    }
+                } catch {
+                    NSLog("[Transcribe] fast draft failed (falling back to Whisper only): \(error)")
+                }
+                // Whisper refinement starts right after the draft (not after diarization).
                 statusMessage = localized("draft_refining")
                 isRefiningWithWhisper = true
                 startWhisperKitTranscription()
@@ -2189,7 +2201,9 @@ class TranscriptionViewModel: ObservableObject {
                                 let whisperWords = update.text.split(whereSeparator: { $0 == " " || $0 == "\n" }).map(String.init)
                                 self.diarizedUtterances = TranscriptRefiner.replacePositional(
                                     turns: self.diarizedUtterances,
-                                    whisperWords: whisperWords)
+                                    whisperWords: whisperWords,
+                                    from: self.lastRefinedWordCount)
+                                self.lastRefinedWordCount = whisperWords.count
                             }
 
                             // Start transcription timer on first real content
@@ -2531,6 +2545,8 @@ class TranscriptionViewModel: ObservableObject {
         guard !words.isEmpty else { return }
         let merged = await diarizationMerger.merge(words: words, speakers: speakers)
         diarizedUtterances = usingDraft ? Self.markWords(merged, refined: false) : merged
+        // Turns were rebuilt from scratch → next positional refine starts from the top.
+        lastRefinedWordCount = 0
     }
 
     /// Returns turns with every word's `refined` flag set (draft = false → blue).
