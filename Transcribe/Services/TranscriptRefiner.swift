@@ -75,4 +75,24 @@ enum TranscriptRefiner {
     private static func overlaps(_ a: WordTimestamp, _ b: WordTimestamp) -> Bool {
         max(a.start, b.start) < min(a.end, b.end)
     }
+
+    /// Even-distributes a completed Whisper window's accurate text across its
+    /// `[start, end]` span into refined pseudo-words. Used during streaming where the
+    /// text is accurate but per-word timing isn't available yet (timing becomes exact
+    /// in the final pass). These feed `refine(...)` exactly like real Whisper words.
+    static func pseudoWords(text: String, start: TimeInterval, end: TimeInterval) -> [WordTimestamp] {
+        let tokens = text.split(whereSeparator: { $0 == " " || $0 == "\n" }).map(String.init)
+        guard !tokens.isEmpty else { return [] }
+        let span = max(0, end - start)
+        let step = span / Double(tokens.count)
+        return tokens.enumerated().map { i, tok in
+            WordTimestamp(
+                word: tok,
+                start: start + step * Double(i),
+                end: start + step * Double(i + 1),
+                confidence: 1.0,
+                refined: true
+            )
+        }
+    }
 }

@@ -69,6 +69,18 @@ struct TranscriptRefinerTests {
         #expect(out[1].words?.contains { $0.word == "gap" } == false)
     }
 
+    @Test func testPseudoWordsEvenlyDistributeAndMarkRefined() {
+        let words = TranscriptRefiner.pseudoWords(text: "a b c d", start: 0, end: 4)
+        #expect(words.map(\.word) == ["a", "b", "c", "d"])
+        #expect(words.allSatisfy { $0.isRefined })
+        #expect(words.first?.start == 0)
+        #expect(words.last?.end == 4)
+    }
+
+    @Test func testPseudoWordsEmptyTextIsEmpty() {
+        #expect(TranscriptRefiner.pseudoWords(text: "   ", start: 0, end: 4).isEmpty)
+    }
+
     @Test func testEmptyInputsAreNoOps() {
         let turns = [turn("Speaker 1", 0, 4, words: [word("a", 0, 2, refined: false)])]
         #expect(TranscriptRefiner.refine(turns: turns, whisperWords: [], coveredUntil: 10) == turns)

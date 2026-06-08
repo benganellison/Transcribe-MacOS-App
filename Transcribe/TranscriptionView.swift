@@ -591,10 +591,10 @@ struct TranscriptionView: View {
         Group {
             if !viewModel.transcribedText.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
-                    // While Whisper is still streaming, show the live-updating plain text
-                    // (draft→Whisper splice). The speaker-grouped view appears once
-                    // transcription completes and the turns carry accurate Whisper words.
-                    if !viewModel.diarizedUtterances.isEmpty && !viewModel.isTranscribing && displayMode != .segments {
+                    // Speaker-grouped view shows as soon as diarization is ready (during
+                    // streaming too); its turns refine window-by-window (blue→white) as
+                    // Whisper covers them.
+                    if !viewModel.diarizedUtterances.isEmpty && displayMode != .segments {
                         diarizedTranscriptView
                     } else if !viewModel.isTranscribing && hasWordTimings && displayMode != .segments {
                         InteractiveTranscriptView(
@@ -2177,7 +2177,12 @@ class TranscriptionViewModel: ObservableObject {
                             if !self.diarizedUtterances.isEmpty,
                                update.coveredUntil - self.lastLiveDiarizeUntil >= self.liveDiarizeIntervalSeconds {
                                 self.lastLiveDiarizeUntil = update.coveredUntil
-                                let whisperWords = update.segments.flatMap { $0.words ?? [] }
+                                // Whisper streams accurate text per 30s window but no per-word
+                                // timing yet — even-distribute each window's text into pseudo-
+                                // words and refine the turns in place (blue draft → white).
+                                let whisperWords = update.segments.flatMap {
+                                    TranscriptRefiner.pseudoWords(text: $0.text, start: $0.start, end: $0.end)
+                                }
                                 self.diarizedUtterances = TranscriptRefiner.refine(
                                     turns: self.diarizedUtterances,
                                     whisperWords: whisperWords,

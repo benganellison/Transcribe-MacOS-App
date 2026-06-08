@@ -400,10 +400,22 @@ private final class StreamingCallbackState: @unchecked Sendable {
             let segmentProgress = min(segmentCount / 10.0, 0.9)
             let estimatedProgress = min(0.3 + max(timeProgress, segmentProgress) * 0.65, 0.95)
             
+            // Emit completed 30s windows as coarse segments (text + time bounds, no
+            // per-word timing yet) so the diarized view can refine its turns
+            // window-by-window. The in-progress window is excluded (not yet covered).
+            let windowSegments = completedSegments.keys.sorted().map { wid in
+                TranscriptionSegmentData(
+                    start: Double(wid) * 30.0,
+                    end: Double(wid + 1) * 30.0,
+                    text: completedSegments[wid] ?? "",
+                    words: nil
+                )
+            }
+
             continuation.yield(TranscriptionUpdate(
                 text: fullText.isEmpty ? "Transkriberar..." : fullText,
                 progress: estimatedProgress,
-                segments: [],
+                segments: windowSegments,
                 isComplete: false,
                 coveredUntil: Double(completedSegments.count) * 30.0
             ))
