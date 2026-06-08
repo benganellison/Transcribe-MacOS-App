@@ -306,4 +306,5 @@
 "fast_draft_toggle" = "Fast draft for long recordings";
 "fast_draft_help" = "Show an instant draft (Parakeet) for long files while the accurate transcription is prepared.";
 "fast_draft_threshold" = "Minimum length (minutes)";
+"draft_generating" = "Generating quick draft…";
 "draft_refining" = "Draft — refining with Whisper…";

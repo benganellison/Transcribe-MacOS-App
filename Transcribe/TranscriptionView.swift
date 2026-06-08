@@ -273,7 +273,7 @@ struct TranscriptionView: View {
                 AccentSpinner(size: 16, lineWidth: 2)
             }
 
-            if viewModel.isShowingDraft {
+            if viewModel.isRefiningWithWhisper {
                 Text(localized("draft_refining"))
                     .font(.system(size: 11, weight: .medium))
                     .foregroundColor(.textTertiary)
@@ -591,7 +591,10 @@ struct TranscriptionView: View {
         Group {
             if !viewModel.transcribedText.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
-                    if !viewModel.diarizedUtterances.isEmpty && displayMode != .segments {
+                    // While Whisper is still streaming, show the live-updating plain text
+                    // (draft→Whisper splice). The speaker-grouped view appears once
+                    // transcription completes and the turns carry accurate Whisper words.
+                    if !viewModel.diarizedUtterances.isEmpty && !viewModel.isTranscribing && displayMode != .segments {
                         diarizedTranscriptView
                     } else if !viewModel.isTranscribing && hasWordTimings && displayMode != .segments {
                         InteractiveTranscriptView(
@@ -1793,6 +1796,9 @@ class TranscriptionViewModel: ObservableObject {
     // MARK: - Fast draft (Parakeet)
     @Published var draftSegments: [TranscriptionSegmentData] = []
     @Published var isShowingDraft = false
+    /// True only while Whisper is actively refining (not during draft gen / diarization),
+    /// so the "refining with Whisper" badge reflects the real phase.
+    @Published var isRefiningWithWhisper = false
     private var cachedSpeakerSegments: [SpeakerSegment]? = nil
     private let draftService = DraftTranscriptionService()
     /// Covered-time of the last live diarization re-merge, to throttle reflow during streaming.
@@ -2058,6 +2064,7 @@ class TranscriptionViewModel: ObservableObject {
         failedChunks = []
         draftSegments = []
         isShowingDraft = false
+        isRefiningWithWhisper = false
         cachedSpeakerSegments = nil
         lastLiveDiarizeUntil = 0
 
@@ -2094,7 +2101,7 @@ class TranscriptionViewModel: ObservableObject {
         let identifySpeakers = UserDefaults.standard.bool(forKey: "identifySpeakers", default: true)
         if draftEnabled && duration >= thresholdSec {
             isShowingDraft = true
-            statusMessage = localized("draft_refining")
+            statusMessage = localized("draft_generating")
             // draft → identify speakers → refine with Whisper.
             Task { @MainActor in
                 // 1. Fast Parakeet draft → full rough (blue) transcript.
@@ -2119,7 +2126,9 @@ class TranscriptionViewModel: ObservableObject {
                         NSLog("[Transcribe] diarization failed: \(error)")
                     }
                 }
-                // 3. Whisper refinement: streams accurate words, whitening in place.
+                // 3. Whisper refinement: streams accurate text over the draft.
+                statusMessage = localized("draft_refining")
+                isRefiningWithWhisper = true
                 startWhisperKitTranscription()
             }
             return
@@ -2421,6 +2430,7 @@ class TranscriptionViewModel: ObservableObject {
     
     private func finishTranscription() {
         self.isTranscribing = false
+        self.isRefiningWithWhisper = false
         self.estimatedTimeRemaining = 0
         self.transcriptionTimer?.invalidate()
         self.transcriptionTimer = nil
@@ -2532,6 +2542,7 @@ class TranscriptionViewModel: ObservableObject {
 
     private func handleTranscriptionError(_ error: Error) {
         self.isTranscribing = false
+        self.isRefiningWithWhisper = false
         self.errorMessage = error.localizedDescription
         
         // Stop timer on error
