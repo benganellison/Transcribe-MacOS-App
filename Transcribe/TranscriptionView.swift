@@ -2535,7 +2535,17 @@ class TranscriptionViewModel: ObservableObject {
             (seg.words ?? []).map { DiarizationMerger.Word(text: $0.word, start: $0.start, end: $0.end) }
         }
         guard !words.isEmpty else { return }
+
+        // DIAGNOSTIC: compare the diarizer's speaker segments to the word timeline.
+        // If distinctSpeakers > 1 but the merge yields 1 turn, and the word time-range
+        // doesn't match the speaker time-range, the draft (Parakeet) word timestamps are
+        // misaligned with the audio seconds the diarizer uses.
+        let distinctSpeakers = Set(speakers.map(\.speakerLabel)).count
+        let wLo = words.map(\.start).min() ?? -1, wHi = words.map(\.end).max() ?? -1
+        let sLo = speakers.map(\.start).min() ?? -1, sHi = speakers.map(\.end).max() ?? -1
+        NSLog("[Transcribe][diar] usingDraft=\(usingDraft) speakerSegments=\(speakers.count) distinctSpeakers=\(distinctSpeakers) words=\(words.count) wordTime=\(wLo)…\(wHi) speakerTime=\(sLo)…\(sHi)")
         let merged = await diarizationMerger.merge(words: words, speakers: speakers)
+        NSLog("[Transcribe][diar] merged into \(merged.count) turns across \(Set(merged.map(\.speakerID)).count) distinct speakers")
         diarizedUtterances = usingDraft ? Self.markWords(merged, refined: false) : merged
     }
 
