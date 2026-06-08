@@ -753,6 +753,7 @@ struct TranscriptionView: View {
             Text(error)
                 .font(.system(size: 12))
                 .foregroundColor(.red)
+                .textSelection(.enabled)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
         } else if viewModel.diarizedUtterances.isEmpty {
