@@ -8,6 +8,14 @@ class WhisperKitService {
     private let languageManager = LanguageManager.shared
     private var isInitializing = false
     private var currentModelId: String?
+    /// Set during transcription; `cancel()` flips it so the progress callback returns
+    /// false and WhisperKit stops early (instead of churning the whole file).
+    private var currentCancelToken: TranscriptionCancelToken?
+
+    /// Stop the in-progress transcription early.
+    func cancel() {
+        currentCancelToken?.cancel()
+    }
     
     var currentModel: String? {
         return currentModelId
@@ -277,10 +285,15 @@ class WhisperKitService {
                     // This is safe because the callback is only invoked synchronously
                     // within WhisperKit's transcription loop on a single thread.
                     let callbackState = StreamingCallbackState(continuation: continuation)
-                    
+
+                    // Cancellation: returning false from the callback stops WhisperKit early.
+                    let cancelToken = TranscriptionCancelToken()
+                    self.currentCancelToken = cancelToken
+
                     // Transcribe with streaming callback
                     let callback: @Sendable (TranscriptionProgress) -> Bool? = { progress in
-                        callbackState.handleProgress(progress)
+                        if cancelToken.isCancelled { return false }
+                        return callbackState.handleProgress(progress)
                     }
                     let results = try await whisperKit.transcribe(
                         audioPath: fileURL.path,
@@ -336,6 +349,15 @@ class WhisperKitService {
             }
         }
     }
+}
+
+/// Thread-safe one-way cancel flag: set from the main actor, read from WhisperKit's
+/// callback thread.
+final class TranscriptionCancelToken: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _cancelled = false
+    var isCancelled: Bool { lock.lock(); defer { lock.unlock() }; return _cancelled }
+    func cancel() { lock.lock(); _cancelled = true; lock.unlock() }
 }
 
 // Wraps mutable streaming state so it can be captured by a @Sendable callback.

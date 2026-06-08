@@ -16,6 +16,11 @@ class TranscriptionService {
     private let languageManager = LanguageManager.shared
     private var whisperKitService: WhisperKitService?
     
+    /// Stops the in-progress WhisperKit transcription early.
+    func cancel() {
+        whisperKitService?.cancel()
+    }
+
     /// Loads (and compiles) the WhisperKit model ahead of time so the first
     /// transcription window doesn't pay the multi-minute load/compile cost. Safe to call
     /// during the draft/diarization wait; `transcribe` reuses this loaded instance.

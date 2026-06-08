@@ -163,6 +163,7 @@
 "font_size" = "Font Size";
 "show_timestamps" = "Show timestamps";
 "retranscribe" = "Re-transcribe";
+"stop_transcription" = "Stop";
 "process_transcription" = "Process Transcription";
 "select_prompt" = "Select prompt";
 "add_information" = "Add information";

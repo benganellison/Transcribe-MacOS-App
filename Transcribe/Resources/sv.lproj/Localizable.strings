@@ -163,6 +163,7 @@
 "font_size" = "Textstorlek";
 "show_timestamps" = "Visa tidsmarkering";
 "retranscribe" = "Transkribera igen";
+"stop_transcription" = "Stoppa";
 "process_transcription" = "Bearbeta transkribering";
 "select_prompt" = "Välj prompt";
 "add_information" = "Lägg till information";

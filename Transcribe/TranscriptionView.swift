@@ -1163,28 +1163,47 @@ struct TranscriptionView: View {
                     .padding(.horizontal, 20)
                 }
                 
-                // Re-transcribe Section
+                // Stop (while transcribing) / Re-transcribe (otherwise) Section
                 VStack(alignment: .leading, spacing: 8) {
-                    Button(action: { viewModel.retranscribe() }) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "arrow.trianglehead.2.counterclockwise")
-                                .font(.system(size: 13))
-                            Text(localized("retranscribe"))
-                                .font(.system(size: 12, weight: .medium))
+                    if viewModel.isTranscribing {
+                        Button(action: { viewModel.stopTranscription() }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "stop.fill")
+                                    .font(.system(size: 12))
+                                Text(localized("stop_transcription"))
+                                    .font(.system(size: 12, weight: .medium))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .foregroundColor(.red)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Color.red, lineWidth: 1)
+                            )
+                            .contentShape(Rectangle())
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .foregroundColor(viewModel.isTranscribing ? .textTertiary : .primaryAccent)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(viewModel.isTranscribing ? Color.white.opacity(0.15) : Color.primaryAccent, lineWidth: 1)
-                        )
-                        .contentShape(Rectangle())
+                        .buttonStyle(TranscriptionButtonStyle())
+                    } else {
+                        Button(action: { viewModel.retranscribe() }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "arrow.trianglehead.2.counterclockwise")
+                                    .font(.system(size: 13))
+                                Text(localized("retranscribe"))
+                                    .font(.system(size: 12, weight: .medium))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .foregroundColor(.primaryAccent)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Color.primaryAccent, lineWidth: 1)
+                            )
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(TranscriptionButtonStyle())
                     }
-                    .buttonStyle(TranscriptionButtonStyle())
-                    .disabled(viewModel.isTranscribing)
-                    .padding(.horizontal, 20)
                 }
+                .padding(.horizontal, 20)
                 
                 // Process Transcription Section
                 VStack(alignment: .leading, spacing: 10) {
@@ -1816,6 +1835,25 @@ class TranscriptionViewModel: ObservableObject {
     /// Global word index already refined, so each tick only rebuilds the growing edge
     /// (not the whole transcript — the CPU hog on long files).
     private var lastRefinedWordCount = 0
+    /// Cancellable handles + flag for the Stop button.
+    private var orchestrationTask: Task<Void, Never>?
+    private var transcriptionStreamTask: Task<Void, Never>?
+    private var wasStopped = false
+
+    /// Stops the in-progress transcription, keeping whatever was transcribed so far.
+    /// "Re-transcribe" restarts from scratch.
+    func stopTranscription() {
+        wasStopped = true
+        transcriptionService?.cancel()        // make WhisperKit return early
+        transcriptionStreamTask?.cancel()
+        orchestrationTask?.cancel()
+        isTranscribing = false
+        isRefiningWithWhisper = false
+        isShowingDraft = false
+        statusMessage = ""
+        transcriptionTimer?.invalidate()
+        transcriptionTimer = nil
+    }
 
     // MARK: - Diarization
     @Published var diarizedUtterances: [DiarizedUtterance] = []
@@ -2087,6 +2125,7 @@ class TranscriptionViewModel: ObservableObject {
     
     func startTranscription() {
         isTranscribing = true
+        wasStopped = false
         // Note: transcription timer starts when actual transcription text arrives,
         // not here — model loading/initialization shouldn't count as transcription time.
         
@@ -2116,7 +2155,7 @@ class TranscriptionViewModel: ObservableObject {
             isShowingDraft = true
             statusMessage = localized("draft_generating")
             // draft → diarize (off-main, ~1.5 min, UI stays responsive) → refine w/ Whisper.
-            Task { @MainActor in
+            orchestrationTask = Task { @MainActor in
                 // 0. Prewarm the Whisper model concurrently during the draft/diarization
                 //    wait, so the first Whisper window doesn't pay the load/compile cost
                 //    (the ~2.5-min "first chunk" stall on large models).
@@ -2153,6 +2192,8 @@ class TranscriptionViewModel: ObservableObject {
                 }
                 // 3. Whisper refinement — wait for the prewarm so the model is loaded.
                 _ = await prewarmTask.value
+                // Bail if the user pressed Stop during the draft/diarization phase.
+                if wasStopped || Task.isCancelled { return }
                 statusMessage = localized("draft_refining")
                 isRefiningWithWhisper = true
                 startWhisperKitTranscription()
@@ -2171,12 +2212,13 @@ class TranscriptionViewModel: ObservableObject {
             transcriptionService = TranscriptionService()
         }
 
-        Task {
+        transcriptionStreamTask = Task {
             do {
                 // Stream transcription updates. Force word timestamps when the user
                 // opted into speaker identification — the merge needs word-level timing.
                 let needWords = true
                 for try await update in transcriptionService!.transcribe(fileURL: fileURL, forceWordTimestamps: needWords) {
+                    if self.wasStopped { break }
                     await MainActor.run {
                         if update.progress < 0.15 && !update.isComplete {
                             // Low-progress updates are status messages (model loading, init, etc.)
@@ -2255,12 +2297,14 @@ class TranscriptionViewModel: ObservableObject {
                 }
             } catch {
                 await MainActor.run {
+                    // A user Stop (or task cancellation) isn't an error — keep the partial.
+                    if self.wasStopped || error is CancellationError { return }
                     self.handleTranscriptionError(error)
                 }
             }
         }
     }
-    
+
     private func startBergetTranscription(language: String?) {
         guard !bergetKey.isEmpty else {
             handleTranscriptionError(CloudTranscriptionError.apiError("Berget API key not configured"))
@@ -2463,6 +2507,9 @@ class TranscriptionViewModel: ObservableObject {
     }
     
     private func finishTranscription() {
+        // If the user stopped, don't run the completion work (re-diarize, etc.) — just
+        // keep the partial transcript. stopTranscription() already reset the flags.
+        if wasStopped { return }
         self.isTranscribing = false
         self.isRefiningWithWhisper = false
         self.estimatedTimeRemaining = 0
