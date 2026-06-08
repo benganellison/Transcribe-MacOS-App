@@ -636,7 +636,10 @@ struct TranscriptionView: View {
     /// Speaker-grouped transcript. Tapping a speaker label opens the rename alert.
     private var diarizedTranscriptView: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+            // LazyVStack so only on-screen turns render — a non-lazy VStack re-laid-out
+            // every turn's custom FlowLayout on each refine, so cost grew with the whole
+            // transcript (the "slower and slower" stall on long files).
+            LazyVStack(alignment: .leading, spacing: 14) {
                 ForEach(Array(viewModel.diarizedUtterances.enumerated()), id: \.element.id) { uIndex, utterance in
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 6) {
