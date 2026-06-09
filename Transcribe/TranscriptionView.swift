@@ -733,6 +733,11 @@ struct TranscriptionView: View {
                                     persistSpeakerChange()
                                 }
                             )
+                            // Constrain the FlowLayout to the container width so it wraps;
+                            // without this the layout can be proposed a nil width, which
+                            // FlowLayout treats as .infinity → one non-wrapping row that
+                            // overflows right (matches the two sibling branches).
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         } else {
                             Text(utterance.text)
                                 .font(.system(size: fontSize))
