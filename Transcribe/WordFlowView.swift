@@ -32,7 +32,7 @@ struct WordFlowView: View {
         FlowLayout(spacing: 4, lineSpacing: 6) {
             ForEach(Array(words.enumerated()), id: \.offset) { index, word in
                 wordView(index: index, word: word)
-                    .id("w-\(segmentIndex)-\(index)")
+                    .id(TimedTranscript.wordID(segment: segmentIndex, word: index))
             }
         }
         .alert(localized("edit_sentence"), isPresented: $showSentenceEditor) {

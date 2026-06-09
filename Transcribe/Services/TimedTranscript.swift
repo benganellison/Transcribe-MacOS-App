@@ -28,6 +28,47 @@ enum TimedTranscript {
         return result
     }
 
+    /// Where a turn sits relative to the playhead. Rows away from the playhead
+    /// get the stable `.spoken`/`.upcoming` cases so 10 Hz playback ticks don't
+    /// invalidate them — only the active turn's row changes per tick.
+    enum PlaybackPhase: Equatable {
+        case upcoming
+        case active(TimeInterval)
+        case spoken
+
+        static func of(start: TimeInterval, end: TimeInterval, at time: TimeInterval) -> PlaybackPhase {
+            if time < start { return .upcoming }
+            if time >= end { return .spoken }
+            return .active(time)
+        }
+
+        /// Time to feed per-word coloring: past turns render fully spoken,
+        /// future turns fully unspoken, the active turn follows the playhead.
+        var effectiveTime: TimeInterval {
+            switch self {
+            case .upcoming: return -.infinity
+            case .active(let t): return t
+            case .spoken: return .infinity
+            }
+        }
+    }
+
+    /// Scroll-target view ID for a word — the single source of the ID format,
+    /// shared by WordFlowView (`.id`) and the follow-playback scroller.
+    static func wordID(segment: Int, word: Int) -> String {
+        "w-\(segment)-\(word)"
+    }
+
+    /// The ID follow-playback should scroll to at `time`, or nil when no scroll
+    /// is wanted: before the first word, or when the active word is unchanged
+    /// since the last scroll (so 10 Hz playback ticks don't restart the scroll
+    /// animation every tick).
+    static func followScrollTarget(in segments: [TranscriptionSegmentData], at time: TimeInterval, lastTargetID: String?) -> String? {
+        guard let active = activeWord(in: segments, at: time) else { return nil }
+        let id = wordID(segment: active.segmentIndex, word: active.wordIndex)
+        return id == lastTargetID ? nil : id
+    }
+
     /// Full transcript text rebuilt from segments (after edits).
     static func rebuildText(from segments: [TranscriptionSegmentData]) -> String {
         segments

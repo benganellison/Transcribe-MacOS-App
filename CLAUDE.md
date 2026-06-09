@@ -101,8 +101,9 @@ KB Whisper models load from `mickekringai/kb-whisper-coreml` HuggingFace repo. D
 - `SettingsView.swift` - Preferences with model management, text processing prompts, LLM settings
 - `RecordingLibraryView.swift` - "My Recordings" + Apple Voice Memos browser; opens a recording into `TranscriptionView` (cached transcription/diarization restored, no re-transcribe)
 - `QuickTranscribeView.swift` - Lightweight drop-in transcription entry point
-- `TranscriptionView.swift` (transcript surface) renders via three reusable views below:
-  - `InteractiveTranscriptView.swift` - `LazyVStack` of segments inside a `ScrollViewReader`; karaoke highlight, tap-to-seek, inline edit, and **Follow playback** auto-scroll for the plain transcript
+- `TranscriptionView.swift` (transcript surface) renders via the reusable views below:
+  - `InteractiveTranscriptView.swift` - `LazyVStack` of segments inside a `ScrollViewReader`; karaoke highlight, tap-to-seek, inline edit, and **Follow playback** auto-scroll for the plain transcript. Auto-scroll is suppressed while the user is scrolling (`onScrollPhaseChange`) and deduped to fire only when the active word changes — an animated `scrollTo` issued at 10 Hz mid-gesture livelocks the main thread.
+  - `DiarizedTurnRow.swift` - one speaker turn (speaker-label `Menu` header + words), `Equatable` and mounted with `.equatable()`. It receives a `TimedTranscript.PlaybackPhase` (stable `.spoken`/`.upcoming` away from the playhead) instead of raw `currentTime`, so 10 Hz playback ticks re-render only the active row. **Do not pass `viewModel.currentTime` (or any per-tick value) into these rows directly** — every realized row's AppKit-backed Menu then churns through `updateNSView` each tick, and combined with scrolling this livelocks SwiftUI's transaction flush (spindump-confirmed freeze).
   - `WordFlowView.swift` - renders one segment/utterance's words; colors each by playback time, handles tap-seek, inline word/sentence edit, low-confidence cue, and the per-word "Split turn here" action
   - `FlowLayout.swift` - a pure SwiftUI `Layout` that wraps word subviews like text (no state)
 

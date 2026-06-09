@@ -30,6 +30,57 @@ final class TimedTranscriptTests: XCTestCase {
         XCTAssertEqual(TimedTranscript.activeWord(in: segs, at: 1.5)?.wordIndex, 0)
     }
 
+    // followScrollTarget
+    func testFollowScrollTargetReturnsActiveWordID() {
+        let segs = [seg(0, 2, [w("a", 0, 0.5), w("b", 0.5, 1.0)])]
+        XCTAssertEqual(TimedTranscript.followScrollTarget(in: segs, at: 0.7, lastTargetID: nil),
+                       TimedTranscript.wordID(segment: 0, word: 1))
+    }
+    func testFollowScrollTargetDedupesUnchangedWord() {
+        // 10 Hz playback ticks land on the same word repeatedly; only the first
+        // tick may scroll, or the animated scrollTo restarts every 100 ms.
+        let segs = [seg(0, 2, [w("a", 0, 1.0), w("b", 1.0, 2.0)])]
+        let first = TimedTranscript.followScrollTarget(in: segs, at: 0.2, lastTargetID: nil)
+        XCTAssertNotNil(first)
+        XCTAssertNil(TimedTranscript.followScrollTarget(in: segs, at: 0.3, lastTargetID: first))
+        XCTAssertNil(TimedTranscript.followScrollTarget(in: segs, at: 0.9, lastTargetID: first))
+        XCTAssertEqual(TimedTranscript.followScrollTarget(in: segs, at: 1.1, lastTargetID: first),
+                       TimedTranscript.wordID(segment: 0, word: 1))
+    }
+    func testFollowScrollTargetNilBeforeFirstWord() {
+        let segs = [seg(1, 2, [w("a", 1, 2)])]
+        XCTAssertNil(TimedTranscript.followScrollTarget(in: segs, at: 0.1, lastTargetID: nil))
+    }
+
+    // playbackPhase
+    func testPlaybackPhaseBeforeTurnIsUpcoming() {
+        XCTAssertEqual(TimedTranscript.PlaybackPhase.of(start: 10, end: 20, at: 5), .upcoming)
+    }
+    func testPlaybackPhaseAfterTurnIsSpoken() {
+        XCTAssertEqual(TimedTranscript.PlaybackPhase.of(start: 10, end: 20, at: 20), .spoken)
+        XCTAssertEqual(TimedTranscript.PlaybackPhase.of(start: 10, end: 20, at: 25), .spoken)
+    }
+    func testPlaybackPhaseInsideTurnCarriesTime() {
+        XCTAssertEqual(TimedTranscript.PlaybackPhase.of(start: 10, end: 20, at: 12.5), .active(12.5))
+    }
+    func testPlaybackPhaseIsStableWhilePlayheadIsElsewhere() {
+        // Rows outside the playhead must compare equal across 10 Hz ticks —
+        // this is what stops playback from invalidating every diarized row.
+        let a = TimedTranscript.PlaybackPhase.of(start: 10, end: 20, at: 30.1)
+        let b = TimedTranscript.PlaybackPhase.of(start: 10, end: 20, at: 30.2)
+        XCTAssertEqual(a, b)
+        let c = TimedTranscript.PlaybackPhase.of(start: 40, end: 50, at: 30.1)
+        let d = TimedTranscript.PlaybackPhase.of(start: 40, end: 50, at: 30.2)
+        XCTAssertEqual(c, d)
+    }
+    func testPlaybackPhaseEffectiveTimeColorsWholeTurn() {
+        // spoken → every word reads as passed; upcoming → none do.
+        let word = w("a", 10, 11)
+        XCTAssertTrue(word.end <= TimedTranscript.PlaybackPhase.spoken.effectiveTime)
+        XCTAssertFalse(word.end <= TimedTranscript.PlaybackPhase.upcoming.effectiveTime)
+        XCTAssertEqual(TimedTranscript.PlaybackPhase.active(10.5).effectiveTime, 10.5)
+    }
+
     // rebuildText
     func testRebuildTextJoinsSegments() {
         let segs = [seg(0, 1, [w("Hej", 0, 1)]), seg(1, 2, [w("då", 1, 2)])]

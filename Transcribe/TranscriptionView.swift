@@ -641,128 +641,66 @@ struct TranscriptionView: View {
             // transcript (the "slower and slower" stall on long files).
             LazyVStack(alignment: .leading, spacing: 14) {
                 ForEach(Array(viewModel.diarizedUtterances.enumerated()), id: \.element.id) { uIndex, utterance in
-                    VStack(alignment: .leading, spacing: 3) {
-                        HStack(spacing: 6) {
-                            Menu {
-                                Button(localized("rename_speaker_title")) {
-                                    renamingSpeakerID = utterance.speakerID
-                                    renameFieldText = speakerNames[utterance.speakerID] ?? utterance.displayName
-                                }
-                                if uIndex > 0 {
-                                    Button(localized("merge_with_previous")) {
-                                        viewModel.joinUtteranceWithPrevious(id: utterance.id)
-                                        persistSpeakerChange()
-                                    }
-                                }
-                                let others = SpeakerReconciliation.distinctSpeakers(in: viewModel.diarizedUtterances)
-                                    .filter { $0 != utterance.speakerID }
-                                if !others.isEmpty {
-                                    Menu(localized("merge_speaker_into")) {
-                                        ForEach(others, id: \.self) { target in
-                                            Button(speakerNames[target] ?? target) {
-                                                viewModel.mergeSpeaker(utterance.speakerID, into: target)
-                                                persistSpeakerChange()
-                                            }
-                                        }
-                                    }
-                                }
-                                Menu(localized("assign_turn_to")) {
-                                    ForEach(others, id: \.self) { target in
-                                        Button(speakerNames[target] ?? target) {
-                                            viewModel.reassignUtterance(id: utterance.id, to: target)
-                                            persistSpeakerChange()
-                                        }
-                                    }
-                                    Button(localized("new_speaker")) {
-                                        viewModel.reassignUtterance(id: utterance.id, to: viewModel.newSpeakerLabel())
-                                        persistSpeakerChange()
-                                    }
-                                }
-                            } label: {
-                                Text(speakerNames[utterance.speakerID] ?? utterance.displayName)
-                                    .font(.system(size: max(11, fontSize - 2), weight: .semibold))
-                                    .foregroundColor(.primaryAccent)
-                            }
-                            .menuStyle(.borderlessButton)
-                            .fixedSize()
-                            .help(localized("speaker_actions_help"))
-
-                            if showTimestamps {
-                                Text("[\(formatTime(utterance.startTime))]")
-                                    .font(.system(size: max(10, fontSize - 4)))
-                                    .foregroundColor(.textTertiary)
-                            }
+                    DiarizedTurnRow(
+                        utterance: utterance,
+                        uIndex: uIndex,
+                        displayName: speakerNames[utterance.speakerID] ?? utterance.displayName,
+                        otherSpeakers: SpeakerReconciliation.distinctSpeakers(in: viewModel.diarizedUtterances)
+                            .filter { $0 != utterance.speakerID }
+                            .map { DiarizedTurnRow.SpeakerOption(id: $0, name: speakerNames[$0] ?? $0) },
+                        timestamp: showTimestamps ? formatTime(utterance.startTime) : nil,
+                        fontSize: fontSize,
+                        isEditing: isEditingTranscript,
+                        showConfidenceHints: isEditingTranscript || showConfidenceHints,
+                        isTranscribing: viewModel.isTranscribing,
+                        phase: .of(start: utterance.startTime, end: utterance.endTime, at: viewModel.currentTime),
+                        onRename: {
+                            renamingSpeakerID = utterance.speakerID
+                            renameFieldText = speakerNames[utterance.speakerID] ?? utterance.displayName
+                        },
+                        onMergeWithPrevious: {
+                            viewModel.joinUtteranceWithPrevious(id: utterance.id)
+                            persistSpeakerChange()
+                        },
+                        onMergeSpeakerInto: { target in
+                            viewModel.mergeSpeaker(utterance.speakerID, into: target)
+                            persistSpeakerChange()
+                        },
+                        onAssignTurnTo: { target in
+                            viewModel.reassignUtterance(id: utterance.id, to: target)
+                            persistSpeakerChange()
+                        },
+                        onAssignTurnToNew: {
+                            viewModel.reassignUtterance(id: utterance.id, to: viewModel.newSpeakerLabel())
+                            persistSpeakerChange()
+                        },
+                        onSeek: { viewModel.seek(to: $0) },
+                        onEditWord: { wIndex, text in
+                            viewModel.editDiarizedWord(utteranceIndex: uIndex, wordIndex: wIndex, newText: text)
+                            persistDiarizedAfterEdit()
+                        },
+                        onEditSentence: { text in
+                            viewModel.editDiarizedSentence(utteranceIndex: uIndex, newText: text)
+                            persistDiarizedAfterEdit()
+                        },
+                        onRestoreWord: { wIndex in
+                            viewModel.restoreDiarizedWord(utteranceIndex: uIndex, wordIndex: wIndex)
+                            persistDiarizedAfterEdit()
+                        },
+                        onRestoreSentence: {
+                            viewModel.restoreDiarizedSentence(utteranceIndex: uIndex)
+                            persistDiarizedAfterEdit()
+                        },
+                        onSplitTurn: { beforeWordIndex in
+                            viewModel.splitDiarizedUtterance(id: utterance.id, beforeWordIndex: beforeWordIndex)
+                            persistSpeakerChange()
                         }
-
-                        if viewModel.isTranscribing, let uWords = utterance.words, !uWords.isEmpty {
-                            // Streaming: one cheap Text per turn (per-word blue/white via
-                            // AttributedString) instead of a tappable view + FlowLayout per
-                            // word. The heavy interactive WordFlowView returns at completion.
-                            Text(Self.streamingAttributedText(uWords, fontSize: fontSize))
-                                .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        } else if let uWords = utterance.words, !uWords.isEmpty {
-                            WordFlowView(
-                                words: uWords,
-                                segmentIndex: 10_000 + uIndex,
-                                currentTime: viewModel.currentTime,
-                                fontSize: fontSize,
-                                isEditing: isEditingTranscript,
-                                showConfidenceHints: isEditingTranscript || showConfidenceHints,
-                                lowConfidenceThreshold: 0.5,
-                                colorBySource: viewModel.isTranscribing,
-                                onSeek: { viewModel.seek(to: $0) },
-                                onEditWord: { wIndex, text in
-                                    viewModel.editDiarizedWord(utteranceIndex: uIndex, wordIndex: wIndex, newText: text)
-                                    persistDiarizedAfterEdit()
-                                },
-                                onEditSentence: { text in
-                                    viewModel.editDiarizedSentence(utteranceIndex: uIndex, newText: text)
-                                    persistDiarizedAfterEdit()
-                                },
-                                onRestoreWord: { wIndex in
-                                    viewModel.restoreDiarizedWord(utteranceIndex: uIndex, wordIndex: wIndex)
-                                    persistDiarizedAfterEdit()
-                                },
-                                onRestoreSentence: {
-                                    viewModel.restoreDiarizedSentence(utteranceIndex: uIndex)
-                                    persistDiarizedAfterEdit()
-                                },
-                                onSplitTurn: { beforeWordIndex in
-                                    viewModel.splitDiarizedUtterance(id: utterance.id, beforeWordIndex: beforeWordIndex)
-                                    persistSpeakerChange()
-                                }
-                            )
-                            // Constrain the FlowLayout to the container width so it wraps;
-                            // without this the layout can be proposed a nil width, which
-                            // FlowLayout treats as .infinity → one non-wrapping row that
-                            // overflows right (matches the two sibling branches).
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        } else {
-                            Text(utterance.text)
-                                .font(.system(size: fontSize))
-                                .foregroundColor(.textPrimary)
-                                .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                    }
+                    )
+                    .equatable()
                 }
             }
             .padding(16)
         }
-    }
-
-    /// One AttributedString for a whole turn with per-word color (draft = blue,
-    /// refined = white). Rendered as a single Text — no per-word views or custom layout.
-    private static func streamingAttributedText(_ words: [WordTimestamp], fontSize: CGFloat) -> AttributedString {
-        var result = AttributedString()
-        for (i, w) in words.enumerated() {
-            var piece = AttributedString(i == 0 ? w.word : " " + w.word)
-            piece.foregroundColor = w.isRefined ? Color.textPrimary : Color.draftBlue
-            piece.font = .system(size: fontSize)
-            result += piece
-        }
-        return result
     }
 
     /// Diarization status line + the on-demand / auto-name actions.
