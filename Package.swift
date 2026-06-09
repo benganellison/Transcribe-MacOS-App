@@ -14,20 +14,22 @@ let package = Package(
         )
     ],
     dependencies: [
-        // WhisperKit for on-device speech recognition
-        .package(url: "https://github.com/argmaxinc/WhisperKit.git", from: "0.5.0"),
+        // WhisperKit (speech-to-text) + SpeakerKit (Pyannote v4 diarization) ship together
+        // in the Argmax OSS umbrella package.
+        .package(url: "https://github.com/argmaxinc/argmax-oss-swift.git", from: "1.0.0"),
 
         // YouTubeKit for YouTube video downloading
         .package(url: "https://github.com/alexeichhorn/YouTubeKit.git", from: "0.3.0"),
 
-        // FluidAudio for on-device speaker diarization (CoreML)
+        // FluidAudio for the Parakeet instant-draft ASR (CoreML)
         .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.12.4"),
     ],
     targets: [
         .target(
             name: "Transcribe",
             dependencies: [
-                "WhisperKit",
+                .product(name: "WhisperKit", package: "argmax-oss-swift"),
+                .product(name: "SpeakerKit", package: "argmax-oss-swift"),
                 "YouTubeKit",
                 .product(name: "FluidAudio", package: "FluidAudio"),
             ],
