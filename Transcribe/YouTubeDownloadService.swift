@@ -291,27 +291,42 @@ class YouTubeDownloadService: ObservableObject {
     
     func extractVideoID(from urlString: String) -> String? {
         guard let url = URL(string: urlString) else { return nil }
-        
+
+        let candidate: String?
+
         // Handle youtu.be format
         if url.host == "youtu.be" || url.host == "www.youtu.be" {
-            return url.pathComponents.last
+            candidate = url.pathComponents.last
         }
-        
         // Handle youtube.com format
-        if url.host == "youtube.com" || url.host == "www.youtube.com" || url.host == "m.youtube.com" {
+        else if url.host == "youtube.com" || url.host == "www.youtube.com" || url.host == "m.youtube.com" {
             if let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
                let videoID = components.queryItems?.first(where: { $0.name == "v" })?.value {
-                return videoID
+                candidate = videoID
+            } else if url.pathComponents.contains("embed") {
+                // Handle embed format
+                candidate = url.pathComponents.last
+            } else {
+                candidate = nil
             }
-            
-            // Handle embed format
-            if url.pathComponents.contains("embed"),
-               let videoID = url.pathComponents.last {
-                return videoID
-            }
+        } else {
+            candidate = nil
         }
-        
-        return nil
+
+        // A YouTube video ID is exactly 11 chars of [A-Za-z0-9_-]. Validate before use:
+        // the ID becomes part of a download filename (`youtube_<id>.<ext>`), so an
+        // unvalidated value (e.g. "?v=../../../x") would allow path traversal in the
+        // temp directory. Reject anything that isn't a well-formed ID.
+        guard let id = candidate, Self.isValidVideoID(id) else { return nil }
+        return id
+    }
+
+    private static let validVideoIDCharacters = CharacterSet(
+        charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-"
+    )
+
+    private static func isValidVideoID(_ id: String) -> Bool {
+        id.count == 11 && id.unicodeScalars.allSatisfy { validVideoIDCharacters.contains($0) }
     }
     
     func cleanup() {

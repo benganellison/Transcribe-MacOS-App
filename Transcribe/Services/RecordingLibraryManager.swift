@@ -321,15 +321,30 @@ class RecordingLibraryManager: ObservableObject {
 
         savedRecordings = metadataURLs
             .filter { $0.pathExtension.lowercased() == "json" }
-            .compactMap { url in
+            .compactMap { url -> SavedRecording? in
                 guard let data = try? Data(contentsOf: url),
                       let recording = try? decoder.decode(SavedRecording.self, from: data),
+                      Self.isSafeStoredFilename(recording.filename),
                       fileManager.fileExists(atPath: recording.audioURL(in: libraryURL).path) else {
                     return nil
                 }
                 return recording
             }
             .sorted { $0.date > $1.date }
+    }
+
+    /// A recording's stored `filename` is always a single path component inside the
+    /// library. A tampered or corrupted metadata sidecar (the library folder may be a
+    /// synced/shared location) could carry `"../../…"`, which `audioURL(in:)` would then
+    /// resolve outside the library — and a later delete/rename would `removeItem`/`moveItem`
+    /// there. Reject anything that isn't a plain component before it reaches the filesystem.
+    private static func isSafeStoredFilename(_ filename: String) -> Bool {
+        !filename.isEmpty
+            && !filename.contains("/")
+            && !filename.contains("\\")
+            && filename != "."
+            && filename != ".."
+            && (filename as NSString).lastPathComponent == filename
     }
 
     func loadVoiceMemos() {

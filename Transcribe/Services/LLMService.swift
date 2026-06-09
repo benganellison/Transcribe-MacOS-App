@@ -98,10 +98,12 @@ final class LLMService: Sendable {
                     }
                     
                     guard (200...299).contains(httpResponse.statusCode) else {
-                        // Try to read error body
+                        // Try to read error body, capped so a hostile/buggy endpoint can't
+                        // stream an unbounded body into memory.
                         var errorBody = ""
                         for try await line in bytes.lines {
                             errorBody += line
+                            if errorBody.count > 8192 { break }
                         }
                         continuation.finish(throwing: LLMError.httpError(httpResponse.statusCode, errorBody))
                         return

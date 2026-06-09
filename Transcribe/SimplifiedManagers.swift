@@ -57,9 +57,14 @@ enum KeychainHelper {
         ]
         let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
         if status == errSecItemNotFound {
-            // Item doesn't exist yet — add it
+            // Item doesn't exist yet — add it.
             var newItem = query
             newItem[kSecValueData as String] = data
+            // Device-only + only-when-unlocked: an API key is re-obtainable from the
+            // provider, so it should never sync to iCloud Keychain or land in an
+            // encrypted device backup. (Default accessibility is WhenUnlocked, which is
+            // backed up and sync-eligible.)
+            newItem[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
             let addStatus = SecItemAdd(newItem as CFDictionary, nil)
             return addStatus == errSecSuccess
         }

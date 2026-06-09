@@ -147,17 +147,7 @@ class AudioRecorder: ObservableObject {
             
             let audioFilename = tempDir.appendingPathComponent("\(UUID().uuidString).m4a")
             recordingURL = audioFilename
-            
-            // Debug logging
-            print("\n⚡ ========== QUICK RECORDING STORAGE DEBUG ==========")
-            print("📁 Storage Type: TEMPORARY (auto-cleanup on app quit)")
-            print("📍 Full Path: \(audioFilename.path)")
-            print("📂 Directory: \(tempDir.path)")
-            print("🗑️ Auto-cleanup: YES - File will be deleted when app quits")
-            print("🆔 UUID: \(audioFilename.lastPathComponent)")
-            print("⏰ Started at: \(Date())")
-            print("====================================================\n")
-            
+
             let settings: [String: Any] = [
                 AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
                 AVSampleRateKey: 16000,
@@ -168,7 +158,8 @@ class AudioRecorder: ObservableObject {
             audioRecorder = try AVAudioRecorder(url: audioFilename, settings: settings)
             audioRecorder?.record()
         } catch {
-            print("Failed to start recording: \(error)")
+            // Recording failed to start; leave recordingURL set so the UI can recover.
+            recordingURL = nil
         }
     }
     

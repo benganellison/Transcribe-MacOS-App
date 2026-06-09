@@ -70,9 +70,14 @@ final class BergetTranscriptionService: Sendable {
         default:             mimeType = "application/octet-stream"
         }
         
-        // Add file
+        // Add file. Strip quotes/CR/LF from the filename so it can't break out of the
+        // Content-Disposition header and inject extra multipart headers or parts.
+        let safeFilename = audioURL.lastPathComponent
+            .replacingOccurrences(of: "\"", with: "")
+            .replacingOccurrences(of: "\r", with: "")
+            .replacingOccurrences(of: "\n", with: "")
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(audioURL.lastPathComponent)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(safeFilename)\"\r\n".data(using: .utf8)!)
         body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
         body.append(try Data(contentsOf: audioURL))
         body.append("\r\n".data(using: .utf8)!)
