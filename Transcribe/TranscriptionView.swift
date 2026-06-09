@@ -694,7 +694,14 @@ struct TranscriptionView: View {
                             }
                         }
 
-                        if let uWords = utterance.words, !uWords.isEmpty {
+                        if viewModel.isTranscribing, let uWords = utterance.words, !uWords.isEmpty {
+                            // Streaming: one cheap Text per turn (per-word blue/white via
+                            // AttributedString) instead of a tappable view + FlowLayout per
+                            // word. The heavy interactive WordFlowView returns at completion.
+                            Text(Self.streamingAttributedText(uWords, fontSize: fontSize))
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        } else if let uWords = utterance.words, !uWords.isEmpty {
                             WordFlowView(
                                 words: uWords,
                                 segmentIndex: 10_000 + uIndex,
@@ -738,6 +745,19 @@ struct TranscriptionView: View {
             }
             .padding(16)
         }
+    }
+
+    /// One AttributedString for a whole turn with per-word color (draft = blue,
+    /// refined = white). Rendered as a single Text — no per-word views or custom layout.
+    private static func streamingAttributedText(_ words: [WordTimestamp], fontSize: CGFloat) -> AttributedString {
+        var result = AttributedString()
+        for (i, w) in words.enumerated() {
+            var piece = AttributedString(i == 0 ? w.word : " " + w.word)
+            piece.foregroundColor = w.isRefined ? Color.textPrimary : Color.draftBlue
+            piece.font = .system(size: fontSize)
+            result += piece
+        }
+        return result
     }
 
     /// Diarization status line + the on-demand / auto-name actions.
