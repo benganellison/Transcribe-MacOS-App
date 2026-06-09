@@ -20,7 +20,12 @@ struct InteractiveTranscriptView: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 10) {
+                // Non-lazy on purpose: this view only renders finished transcripts,
+                // and 10 Hz playback ticks + user scrolling drive LazyVStack's
+                // placement/estimation machinery into a transaction livelock
+                // (same spindump-confirmed freeze as the diarized view). A VStack
+                // realizes everything once and scrolling does no layout work.
+                VStack(alignment: .leading, spacing: 10) {
                     ForEach(Array(segments.enumerated()), id: \.offset) { sIndex, segment in
                         WordFlowView(
                             words: segment.words ?? [],

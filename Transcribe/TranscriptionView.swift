@@ -636,70 +636,84 @@ struct TranscriptionView: View {
     /// Speaker-grouped transcript. Tapping a speaker label opens the rename alert.
     private var diarizedTranscriptView: some View {
         ScrollView {
-            // LazyVStack so only on-screen turns render — a non-lazy VStack re-laid-out
-            // every turn's custom FlowLayout on each refine, so cost grew with the whole
-            // transcript (the "slower and slower" stall on long files).
-            LazyVStack(alignment: .leading, spacing: 14) {
-                ForEach(Array(viewModel.diarizedUtterances.enumerated()), id: \.element.id) { uIndex, utterance in
-                    DiarizedTurnRow(
-                        utterance: utterance,
-                        uIndex: uIndex,
-                        displayName: speakerNames[utterance.speakerID] ?? utterance.displayName,
-                        otherSpeakers: SpeakerReconciliation.distinctSpeakers(in: viewModel.diarizedUtterances)
-                            .filter { $0 != utterance.speakerID }
-                            .map { DiarizedTurnRow.SpeakerOption(id: $0, name: speakerNames[$0] ?? $0) },
-                        timestamp: showTimestamps ? formatTime(utterance.startTime) : nil,
-                        fontSize: fontSize,
-                        isEditing: isEditingTranscript,
-                        showConfidenceHints: isEditingTranscript || showConfidenceHints,
-                        isTranscribing: viewModel.isTranscribing,
-                        phase: .of(start: utterance.startTime, end: utterance.endTime, at: viewModel.currentTime),
-                        onRename: {
-                            renamingSpeakerID = utterance.speakerID
-                            renameFieldText = speakerNames[utterance.speakerID] ?? utterance.displayName
-                        },
-                        onMergeWithPrevious: {
-                            viewModel.joinUtteranceWithPrevious(id: utterance.id)
-                            persistSpeakerChange()
-                        },
-                        onMergeSpeakerInto: { target in
-                            viewModel.mergeSpeaker(utterance.speakerID, into: target)
-                            persistSpeakerChange()
-                        },
-                        onAssignTurnTo: { target in
-                            viewModel.reassignUtterance(id: utterance.id, to: target)
-                            persistSpeakerChange()
-                        },
-                        onAssignTurnToNew: {
-                            viewModel.reassignUtterance(id: utterance.id, to: viewModel.newSpeakerLabel())
-                            persistSpeakerChange()
-                        },
-                        onSeek: { viewModel.seek(to: $0) },
-                        onEditWord: { wIndex, text in
-                            viewModel.editDiarizedWord(utteranceIndex: uIndex, wordIndex: wIndex, newText: text)
-                            persistDiarizedAfterEdit()
-                        },
-                        onEditSentence: { text in
-                            viewModel.editDiarizedSentence(utteranceIndex: uIndex, newText: text)
-                            persistDiarizedAfterEdit()
-                        },
-                        onRestoreWord: { wIndex in
-                            viewModel.restoreDiarizedWord(utteranceIndex: uIndex, wordIndex: wIndex)
-                            persistDiarizedAfterEdit()
-                        },
-                        onRestoreSentence: {
-                            viewModel.restoreDiarizedSentence(utteranceIndex: uIndex)
-                            persistDiarizedAfterEdit()
-                        },
-                        onSplitTurn: { beforeWordIndex in
-                            viewModel.splitDiarizedUtterance(id: utterance.id, beforeWordIndex: beforeWordIndex)
-                            persistSpeakerChange()
-                        }
-                    )
-                    .equatable()
-                }
+            // Streaming keeps LazyVStack: refine rewrites turns continuously, and a
+            // non-lazy VStack re-laid-out every FlowLayout per refine ("slower and
+            // slower" on long files). Once finished, the rows are static and the
+            // container must NOT be lazy: 10 Hz playback ticks re-invalidate lazy
+            // placement while scrolling shuffles the realized window, and the lazy
+            // machinery (item-phase mutations ↔ content-size estimates ↔ placement)
+            // livelocks SwiftUI's transaction flush — the listen-while-scrolling
+            // freeze, twice spindump-confirmed in LazySubviewPlacements /
+            // LazyLayoutViewCache.updateItemPhases / ScrollViewUtilities.contentFrame.
+            if viewModel.isTranscribing {
+                LazyVStack(alignment: .leading, spacing: 14) { diarizedRows }
+                    .padding(16)
+            } else {
+                VStack(alignment: .leading, spacing: 14) { diarizedRows }
+                    .padding(16)
             }
-            .padding(16)
+        }
+    }
+
+    @ViewBuilder
+    private var diarizedRows: some View {
+        ForEach(Array(viewModel.diarizedUtterances.enumerated()), id: \.element.id) { uIndex, utterance in
+            DiarizedTurnRow(
+                utterance: utterance,
+                uIndex: uIndex,
+                displayName: speakerNames[utterance.speakerID] ?? utterance.displayName,
+                otherSpeakers: SpeakerReconciliation.distinctSpeakers(in: viewModel.diarizedUtterances)
+                    .filter { $0 != utterance.speakerID }
+                    .map { DiarizedTurnRow.SpeakerOption(id: $0, name: speakerNames[$0] ?? $0) },
+                timestamp: showTimestamps ? formatTime(utterance.startTime) : nil,
+                fontSize: fontSize,
+                isEditing: isEditingTranscript,
+                showConfidenceHints: isEditingTranscript || showConfidenceHints,
+                isTranscribing: viewModel.isTranscribing,
+                phase: .of(start: utterance.startTime, end: utterance.endTime, at: viewModel.currentTime),
+                onRename: {
+                    renamingSpeakerID = utterance.speakerID
+                    renameFieldText = speakerNames[utterance.speakerID] ?? utterance.displayName
+                },
+                onMergeWithPrevious: {
+                    viewModel.joinUtteranceWithPrevious(id: utterance.id)
+                    persistSpeakerChange()
+                },
+                onMergeSpeakerInto: { target in
+                    viewModel.mergeSpeaker(utterance.speakerID, into: target)
+                    persistSpeakerChange()
+                },
+                onAssignTurnTo: { target in
+                    viewModel.reassignUtterance(id: utterance.id, to: target)
+                    persistSpeakerChange()
+                },
+                onAssignTurnToNew: {
+                    viewModel.reassignUtterance(id: utterance.id, to: viewModel.newSpeakerLabel())
+                    persistSpeakerChange()
+                },
+                onSeek: { viewModel.seek(to: $0) },
+                onEditWord: { wIndex, text in
+                    viewModel.editDiarizedWord(utteranceIndex: uIndex, wordIndex: wIndex, newText: text)
+                    persistDiarizedAfterEdit()
+                },
+                onEditSentence: { text in
+                    viewModel.editDiarizedSentence(utteranceIndex: uIndex, newText: text)
+                    persistDiarizedAfterEdit()
+                },
+                onRestoreWord: { wIndex in
+                    viewModel.restoreDiarizedWord(utteranceIndex: uIndex, wordIndex: wIndex)
+                    persistDiarizedAfterEdit()
+                },
+                onRestoreSentence: {
+                    viewModel.restoreDiarizedSentence(utteranceIndex: uIndex)
+                    persistDiarizedAfterEdit()
+                },
+                onSplitTurn: { beforeWordIndex in
+                    viewModel.splitDiarizedUtterance(id: utterance.id, beforeWordIndex: beforeWordIndex)
+                    persistSpeakerChange()
+                }
+            )
+            .equatable()
         }
     }
 
