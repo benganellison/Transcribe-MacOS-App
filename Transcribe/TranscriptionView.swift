@@ -1904,11 +1904,15 @@ class TranscriptionViewModel: ObservableObject {
     private var orchestrationTask: Task<Void, Never>?
     private var transcriptionStreamTask: Task<Void, Never>?
     private var wasStopped = false
+    /// True while a "re-run refinement only" pass is active: keep the user's turn
+    /// structure + edits and only swap text positionally (no re-merge at completion).
+    private var isRerunRefinement = false
 
     /// Stops the in-progress transcription, keeping whatever was transcribed so far.
     /// "Re-transcribe" restarts from scratch.
     func stopTranscription() {
         wasStopped = true
+        isRerunRefinement = false             // re-run aborted; don't treat next completion as one
         transcriptionService?.cancel()        // make WhisperKit return early
         transcriptionStreamTask?.cancel()
         orchestrationTask?.cancel()
@@ -2196,16 +2200,20 @@ class TranscriptionViewModel: ObservableObject {
 
     /// Re-run ONLY the Whisper refinement, reusing the cached speaker segments — skips
     /// the draft (Parakeet) and diarization passes. Use after switching to a more
-    /// capable model. Speaker turns are rebuilt from the existing diarization at the
-    /// end (manual speaker/word edits are not preserved).
+    /// capable model. The user's existing turn structure and manual edits (speaker
+    /// splits/merges/renames and locked word/sentence edits) are preserved: the new
+    /// Whisper text is swapped in positionally, and locked words are left untouched.
     func rerunRefinement() {
         guard canRerunRefinement else { retranscribe(); return }
         wasStopped = false
+        isRerunRefinement = true
         isTranscribing = true
         errorMessage = nil
         diarizationError = nil
         statusMessage = localized("draft_refining")
-        // Keep cachedSpeakerSegments + the speaker structure; reset whisper/refine state.
+        // Keep cachedSpeakerSegments + the speaker structure AND the user's edits
+        // (locked words, splits/merges, renames, restore snapshots). Reset only the
+        // whisper/refine progress state.
         segments = []
         transcribedText = ""
         progress = 0
@@ -2213,14 +2221,17 @@ class TranscriptionViewModel: ObservableObject {
         transcriptionTime = 0
         transcriptionStartTime = nil
         transcriptionTimer?.invalidate(); transcriptionTimer = nil
-        originalSegments = nil
-        originalDiarizedUtterances = nil
         lastRefineAt = .distantPast
         lastRefinedWordCount = 0
         cachedWhisperWords = []
         cachedCompletedWindows = 0
-        // Re-blue the existing turns as the scaffold so the new pass re-whitens them.
-        diarizedUtterances = Self.markWords(diarizedUtterances, refined: false)
+        // Re-blue the existing turns as the scaffold — but keep edited (locked) words as
+        // they are, so the new Whisper pass re-whitens everything except your edits.
+        diarizedUtterances = diarizedUtterances.map { turn in
+            var t = turn
+            t.words = turn.words?.map { var w = $0; if !w.isLocked { w.refined = false }; return w }
+            return t
+        }
         isShowingDraft = false
         isRefiningWithWhisper = true
         // Prewarm (handles a changed model) then run Whisper only.
@@ -2397,9 +2408,24 @@ class TranscriptionViewModel: ObservableObject {
                             self.draftSegments = []
                             self.transcribedText = update.text
                             self.wordCount = update.text.split(separator: " ").count
+                            if self.isRerunRefinement {
+                                // Re-run: the user's edited turn structure is authoritative.
+                                // Do a final positional swap of the complete Whisper text
+                                // into the existing turns — preserving turn boundaries,
+                                // speaker labels, and locked (manually edited) words —
+                                // instead of rebuilding from scratch in finishTranscription().
+                                let whisperWords = update.text
+                                    .split(whereSeparator: { $0 == " " || $0 == "\n" })
+                                    .map(String.init)
+                                self.diarizedUtterances = TranscriptRefiner.replacePositional(
+                                    turns: self.diarizedUtterances,
+                                    whisperWords: whisperWords,
+                                    from: 0
+                                )
+                            }
                             // Speaker turns are rebuilt from the full Whisper transcript in
                             // finishTranscription() (the draft is too sparse to structure
-                            // them); no in-place refine needed here.
+                            // them); no in-place refine needed here, except the re-run above.
                             self.finishTranscription()
                         }
                     }
@@ -2637,6 +2663,14 @@ class TranscriptionViewModel: ObservableObject {
         self.singleFileProgress = 0
         self.isProcessingChunks = false
         self.statusMessage = ""
+
+        // A re-run already swapped the final Whisper text into the user's edited turns
+        // positionally (in the isComplete handler), preserving every manual edit. Rebuilding
+        // turns from scratch here would wipe those edits, so skip it and clear the flag.
+        if isRerunRefinement {
+            isRerunRefinement = false
+            return
+        }
 
         // Build the authoritative speaker turns now that the full, accurate Whisper
         // transcript exists. The during-streaming turns were merged against the sparse

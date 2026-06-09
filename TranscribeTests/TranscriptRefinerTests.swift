@@ -105,6 +105,36 @@ struct TranscriptRefinerTests {
         #expect(out[0].words?.map(\.word) == ["A", "EDITED"])    // locked kept; position consumed
     }
 
+    /// Mirrors the "re-run refinement only" completion pass: a full from:0 sweep over the
+    /// user's edited turns swaps in the new model's text while every manual edit survives —
+    /// the renamed/reassigned speaker, the turn split (two turns, not re-merged), and the
+    /// locked word keep their identity.
+    @Test func testReplacePositionalRerunPreservesEditsAndStructure() {
+        let t1 = turn("Renamed Host", 0, 4, words: [
+            word("rough1", 0, 2, refined: true),
+            word("KEPT", 2, 4, refined: true, locked: true),
+        ])
+        let t2 = turn("Guest", 4, 8, words: [
+            word("rough3", 4, 6, refined: true),
+            word("rough4", 6, 8, refined: true),
+        ])
+        let id1 = t1.id
+        let id2 = t2.id
+        let turns = [t1, t2]
+        // A more capable model re-transcribes; same word count as the edited scaffold.
+        let out = TranscriptRefiner.replacePositional(
+            turns: turns, whisperWords: ["Better1", "DROPPED", "Better3", "Better4"], from: 0
+        )
+        #expect(out.count == 2)                                     // split NOT re-merged
+        #expect(out[0].id == id1 && out[1].id == id2)              // turn identity intact
+        #expect(out[0].speakerID == "Renamed Host")               // rename survives
+        #expect(out[1].speakerID == "Guest")
+        #expect(out[0].words?.map(\.word) == ["Better1", "KEPT"])  // locked edit kept, whisper word dropped
+        #expect(out[0].words?.last?.isLocked == true)
+        #expect(out[1].words?.map(\.word) == ["Better3", "Better4"])
+        #expect(out[1].words?.allSatisfy { $0.isRefined } == true)
+    }
+
     @Test func testReplacePositionalEmptyWhisperIsNoOp() {
         let turns = [turn("Speaker 1", 0, 2, words: [word("a", 0, 2, refined: false)])]
         #expect(TranscriptRefiner.replacePositional(turns: turns, whisperWords: []) == turns)
