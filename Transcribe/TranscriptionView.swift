@@ -1929,7 +1929,9 @@ class TranscriptionViewModel: ObservableObject {
     @Published var originalDiarizedUtterances: [DiarizedUtterance]? = nil
     @Published var isDiarizing = false
     @Published var diarizationError: String?
-    private let diarizationService = DiarizationService()
+    // Backend chosen by the `diarizationBackend` setting (FluidAudio today; SpeakerKit once
+    // the argmax-oss-swift package is added). Both conform to `Diarizing` → `[SpeakerSegment]`.
+    private let diarizationService: any Diarizing = DiarizationServiceFactory.make()
     private let diarizationMerger = DiarizationMerger()
 
     @Published var elapsedTime: Double = 0

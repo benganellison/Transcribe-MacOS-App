@@ -182,6 +182,8 @@ class SettingsManager: ObservableObject {
             "identifySpeakers": true,
             // 0 = auto (model picks itself by content); 1–4 → Sortformer, 5–10 → LS-EEND.
             "expectedSpeakers": 0,
+            // Diarizer backend: "fluidAudio" (default) or "speakerKit" (needs argmax-oss-swift).
+            "diarizationBackend": DiarizationBackend.fluidAudio.rawValue,
             "recordingQuality": "high",
             "enableNoiseReduction": true,
             "enableSilenceTrimming": true,
