@@ -166,6 +166,8 @@
 "stop_transcription" = "Stoppa";
 "model_auto" = "Auto";
 "model_auto_desc" = "Bästa modell för valt språk";
+"rerun_refinement" = "Kör om endast förbättring";
+"rerun_refinement_help" = "Kör om Whisper-passet (t.ex. med en bättre modell) och återanvänder befintligt utkast och talare — hoppar över utkast och talaridentifiering.";
 "process_transcription" = "Bearbeta transkribering";
 "select_prompt" = "Välj prompt";
 "add_information" = "Lägg till information";

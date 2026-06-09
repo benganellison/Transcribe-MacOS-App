@@ -62,6 +62,7 @@ class TranscriptionService {
         if whisperKitService == nil {
             whisperKitService = WhisperKitService()
         }
+        if whisperKitService?.currentModel == modelId { return }  // already loaded
         try? await whisperKitService?.initialize(modelId: modelId)
     }
 

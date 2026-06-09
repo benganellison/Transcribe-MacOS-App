@@ -1221,6 +1221,29 @@ struct TranscriptionView: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(TranscriptionButtonStyle())
+
+                        // Re-run only the Whisper refinement (reuse draft + speakers) —
+                        // e.g. after switching to a more capable model.
+                        if viewModel.canRerunRefinement {
+                            Button(action: { viewModel.rerunRefinement() }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "wand.and.stars")
+                                        .font(.system(size: 13))
+                                    Text(localized("rerun_refinement"))
+                                        .font(.system(size: 12, weight: .medium))
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                                .foregroundColor(.textSecondary)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                                )
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(TranscriptionButtonStyle())
+                            .help(localized("rerun_refinement_help"))
+                        }
                     }
                 }
                 .padding(.horizontal, 20)
@@ -2164,7 +2187,52 @@ class TranscriptionViewModel: ObservableObject {
         // Start fresh
         startTranscription()
     }
-    
+
+    /// True once speakers are recognized — then we can re-run just the Whisper
+    /// refinement (e.g. with a better model) without re-doing the draft + diarization.
+    var canRerunRefinement: Bool {
+        !diarizedUtterances.isEmpty && cachedSpeakerSegments != nil
+    }
+
+    /// Re-run ONLY the Whisper refinement, reusing the cached speaker segments — skips
+    /// the draft (Parakeet) and diarization passes. Use after switching to a more
+    /// capable model. Speaker turns are rebuilt from the existing diarization at the
+    /// end (manual speaker/word edits are not preserved).
+    func rerunRefinement() {
+        guard canRerunRefinement else { retranscribe(); return }
+        wasStopped = false
+        isTranscribing = true
+        errorMessage = nil
+        diarizationError = nil
+        statusMessage = localized("draft_refining")
+        // Keep cachedSpeakerSegments + the speaker structure; reset whisper/refine state.
+        segments = []
+        transcribedText = ""
+        progress = 0
+        wordCount = 0
+        transcriptionTime = 0
+        transcriptionStartTime = nil
+        transcriptionTimer?.invalidate(); transcriptionTimer = nil
+        originalSegments = nil
+        originalDiarizedUtterances = nil
+        lastRefineAt = .distantPast
+        lastRefinedWordCount = 0
+        cachedWhisperWords = []
+        cachedCompletedWindows = 0
+        // Re-blue the existing turns as the scaffold so the new pass re-whitens them.
+        diarizedUtterances = Self.markWords(diarizedUtterances, refined: false)
+        isShowingDraft = false
+        isRefiningWithWhisper = true
+        // Prewarm (handles a changed model) then run Whisper only.
+        if transcriptionService == nil { transcriptionService = TranscriptionService() }
+        let svc = transcriptionService
+        orchestrationTask = Task { @MainActor in
+            await svc?.prewarm()
+            if wasStopped { return }
+            startWhisperKitTranscription()
+        }
+    }
+
     func startTranscription() {
         isTranscribing = true
         wasStopped = false
@@ -2322,16 +2390,13 @@ class TranscriptionViewModel: ObservableObject {
                         }
                         
                         if update.isComplete {
-                            // Whisper finished — drop the draft entirely. The
-                            // final update already set segments/transcribedText to
-                            // the accurate result; ensure no spliced draft tail
-                            // lingers.
-                            if self.isShowingDraft {
-                                self.isShowingDraft = false
-                                self.draftSegments = []
-                                self.transcribedText = update.text
-                                self.wordCount = update.text.split(separator: " ").count
-                            }
+                            // Whisper finished — drop the draft and store the final text
+                            // (always, even on the re-run-refinement path where the draft
+                            // isn't showing).
+                            self.isShowingDraft = false
+                            self.draftSegments = []
+                            self.transcribedText = update.text
+                            self.wordCount = update.text.split(separator: " ").count
                             // Speaker turns are rebuilt from the full Whisper transcript in
                             // finishTranscription() (the draft is too sparse to structure
                             // them); no in-place refine needed here.

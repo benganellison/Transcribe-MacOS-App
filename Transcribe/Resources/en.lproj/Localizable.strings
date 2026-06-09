@@ -166,6 +166,8 @@
 "stop_transcription" = "Stop";
 "model_auto" = "Auto";
 "model_auto_desc" = "Best model for the selected language";
+"rerun_refinement" = "Re-run refinement only";
+"rerun_refinement_help" = "Re-run the Whisper pass (e.g. with a better model) reusing the existing draft and speakers — skips the draft and speaker-identification waits.";
 "process_transcription" = "Process Transcription";
 "select_prompt" = "Select prompt";
 "add_information" = "Add information";
