@@ -2201,10 +2201,9 @@ class TranscriptionViewModel: ObservableObject {
                 // 0. Prewarm the Whisper model concurrently during the draft/diarization
                 //    wait, so the first Whisper window doesn't pay the load/compile cost
                 //    (the ~2.5-min "first chunk" stall on large models).
-                let modelId = UserDefaults.standard.string(forKey: "selectedTranscriptionModel") ?? ""
                 transcriptionService = TranscriptionService()
                 let svc = transcriptionService
-                let prewarmTask = Task { await svc?.prewarm(modelId: modelId) }
+                let prewarmTask = Task { await svc?.prewarm() }  // resolves effective model internally
 
                 // 1. Fast Parakeet draft → full rough (blue) transcript. Pass the selected
                 //    language so Swedish audio isn't decoded as English.

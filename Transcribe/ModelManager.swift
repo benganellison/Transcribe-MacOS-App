@@ -38,6 +38,7 @@ class ModelManager: ObservableObject {
     ]
     
     private static let displayNames: [String: String] = [
+        "auto": "Auto",
         "kb_whisper-base-coreml": "KB Whisper Base",
         "kb_whisper-small-coreml": "KB Whisper Small",
         "kb_whisper-medium-coreml": "KB Whisper Medium",

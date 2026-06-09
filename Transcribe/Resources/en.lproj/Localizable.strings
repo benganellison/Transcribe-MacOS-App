@@ -164,6 +164,8 @@
 "show_timestamps" = "Show timestamps";
 "retranscribe" = "Re-transcribe";
 "stop_transcription" = "Stop";
+"model_auto" = "Auto";
+"model_auto_desc" = "Best model for the selected language";
 "process_transcription" = "Process Transcription";
 "select_prompt" = "Select prompt";
 "add_information" = "Add information";

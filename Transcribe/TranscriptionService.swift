@@ -21,10 +21,44 @@ class TranscriptionService {
         whisperKitService?.cancel()
     }
 
-    /// Loads (and compiles) the WhisperKit model ahead of time so the first
-    /// transcription window doesn't pay the multi-minute load/compile cost. Safe to call
-    /// during the draft/diarization wait; `transcribe` reuses this loaded instance.
-    func prewarm(modelId: String) async {
+    /// Resolves the model that will actually run from the user's selection + language.
+    /// KB-Whisper is fine-tuned for Swedish and effectively only outputs Swedish, so:
+    /// - "auto" model → KB for Swedish, multilingual OpenAI otherwise.
+    /// - a KB model with a non-Swedish (or auto) language → multilingual OpenAI instead.
+    /// Everything else is used as-is.
+    static let multilingualDefaultModel = "openai_whisper-large-v3"
+    static let swedishDefaultModel = "kb_whisper-large-coreml"
+
+    static func resolveEffectiveModel(selected: String, languageCode: String) -> String {
+        let isSwedish = (languageCode == "sv")
+        if selected == "auto" {
+            // "Auto" = best-quality (large) by language.
+            return isSwedish ? swedishDefaultModel : multilingualDefaultModel
+        }
+        // KB is Swedish-only in practice; for non-Swedish, keep the chosen SIZE but swap
+        // to the same-size OpenAI (multilingual) model. large → v3 (newer/better).
+        if selected.hasPrefix("kb_whisper-") && !isSwedish {
+            switch selected {
+            case "kb_whisper-base-coreml":   return "openai_whisper-base"
+            case "kb_whisper-small-coreml":  return "openai_whisper-small"
+            case "kb_whisper-medium-coreml": return "openai_whisper-medium"
+            case "kb_whisper-large-coreml":  return "openai_whisper-large-v3"
+            default:                          return multilingualDefaultModel
+            }
+        }
+        return selected
+    }
+
+    private func currentEffectiveModel() -> String {
+        let selected = UserDefaults.standard.string(forKey: "selectedTranscriptionModel") ?? ""
+        return Self.resolveEffectiveModel(selected: selected, languageCode: languageManager.selectedLanguage.code)
+    }
+
+    /// Loads (and compiles) the effective WhisperKit model ahead of time so the first
+    /// transcription window doesn't pay the multi-minute load/compile cost.
+    func prewarm() async {
+        let modelId = currentEffectiveModel()
+        guard modelId.hasPrefix("kb_whisper-") || modelId.hasPrefix("openai_whisper-") else { return }
         if whisperKitService == nil {
             whisperKitService = WhisperKitService()
         }
@@ -35,11 +69,12 @@ class TranscriptionService {
         AsyncThrowingStream { continuation in
             Task {
                 do {
-                    // Check if we have a downloaded model
-                    guard let selectedModel = UserDefaults.standard.string(forKey: "selectedTranscriptionModel"),
-                          !selectedModel.isEmpty else {
+                    // Resolve the effective model (handles "auto" + KB→multilingual).
+                    guard let rawModel = UserDefaults.standard.string(forKey: "selectedTranscriptionModel"),
+                          !rawModel.isEmpty else {
                         throw TranscriptionError.noModelSelected
                     }
+                    let selectedModel = Self.resolveEffectiveModel(selected: rawModel, languageCode: languageManager.selectedLanguage.code)
 
                     if selectedModel.starts(with: "kb_whisper-") ||  // KB CoreML models
                        selectedModel.starts(with: "openai_whisper-") {

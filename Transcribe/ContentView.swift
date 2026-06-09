@@ -472,6 +472,40 @@ struct ContentView: View {
         .buttonStyle(PlainButtonStyle())
         .popover(isPresented: $showModelPopover) {
             VStack(alignment: .leading, spacing: 0) {
+                // Auto — pick the best model from the selected language (Swedish → KB,
+                // everything else → multilingual Whisper).
+                Button(action: {
+                    selectedModel = "auto"
+                    showModelPopover = false
+                }) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "wand.and.stars")
+                            .font(.system(size: 13))
+                            .foregroundColor(.primaryAccent)
+                            .frame(width: 20)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(localized("model_auto"))
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(.textPrimary)
+                            Text(localized("model_auto_desc"))
+                                .font(.system(size: 10))
+                                .foregroundColor(.textTertiary)
+                        }
+                        Spacer()
+                        if selectedModel == "auto" {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(.primaryAccent)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(PlainButtonStyle())
+
+                Divider().padding(.horizontal, 12).padding(.vertical, 4)
+
                 // KB Whisper models
                 Text("KB Whisper")
                     .font(.system(size: 11, weight: .medium))

@@ -164,6 +164,8 @@
 "show_timestamps" = "Visa tidsmarkering";
 "retranscribe" = "Transkribera igen";
 "stop_transcription" = "Stoppa";
+"model_auto" = "Auto";
+"model_auto_desc" = "Bästa modell för valt språk";
 "process_transcription" = "Bearbeta transkribering";
 "select_prompt" = "Välj prompt";
 "add_information" = "Lägg till information";
