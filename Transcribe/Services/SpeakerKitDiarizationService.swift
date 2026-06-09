@@ -43,7 +43,13 @@ actor SpeakerKitDiarizationService: Diarizing {
 
         // Map SpeakerKit segments → mapper rows → first-appearance "Speaker N" labels,
         // reusing the exact same pure mapper the FluidAudio path uses (consistent labels).
-        let rows: [SpeakerSegmentMapper.Row] = result.segments.compactMap { (seg: SpeakerKit.SpeakerSegment) in
+        //
+        // `SpeakerKit` is both the module name AND a class name, so the framework's segment
+        // type can't be written as `SpeakerKit.SpeakerSegment` (that resolves to the class,
+        // which has no such member). Leave `seg` un-annotated so it's inferred from
+        // `result.segments`; the un-annotated `SpeakerSegment` / `SpeakerSegmentMapper`
+        // names below resolve to the app's own types (same-module declarations win).
+        let rows: [SpeakerSegmentMapper.Row] = result.segments.compactMap { seg -> SpeakerSegmentMapper.Row? in
             // SpeakerInfo is an enum (.speakerId / .multiple / .noMatch). Take the single
             // speaker id; for `.multiple` use its first; skip `.noMatch`.
             guard let index = seg.speaker.speakerId ?? seg.speaker.speakerIds.first else {
