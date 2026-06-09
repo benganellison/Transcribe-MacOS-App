@@ -11,8 +11,9 @@
 		4042913A2E793C6C00DB2587 /* YouTubeKit in Frameworks */ = {isa = PBXBuildFile; productRef = 404291392E793C6C00DB2587 /* YouTubeKit */; };
 		4087E8D52E769BAF00C23FC9 /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4087E8D42E769BAF00C23FC9 /* Accelerate.framework */; };
 		40DACEB62E75F6ED00E0B532 /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = 40DACEB52E75F6ED00E0B532 /* WhisperKit */; };
-		FA1D0A0D00000000000000B1 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = FA1D0A0D00000000000000B2 /* FluidAudio */; };
 		40DACEB82E75F6ED00E0B532 /* whisperkit-cli in Frameworks */ = {isa = PBXBuildFile; productRef = 40DACEB72E75F6ED00E0B532 /* whisperkit-cli */; };
+		8835EA16BF67D63C70100258 /* SpeakerKit in Frameworks */ = {isa = PBXBuildFile; productRef = A49FD834A1042B6380E52F76 /* SpeakerKit */; };
+		FA1D0A0D00000000000000B1 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = FA1D0A0D00000000000000B2 /* FluidAudio */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -46,16 +47,22 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		40DACE4F2E75861E00E0B532 /* Transcribe */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = Transcribe;
 			sourceTree = "<group>";
 		};
 		40DACE5E2E75861F00E0B532 /* TranscribeTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = TranscribeTests;
 			sourceTree = "<group>";
 		};
 		40DACE682E75861F00E0B532 /* TranscribeUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = TranscribeUITests;
 			sourceTree = "<group>";
 		};
@@ -71,6 +78,7 @@
 				40DACEB82E75F6ED00E0B532 /* whisperkit-cli in Frameworks */,
 				4042913A2E793C6C00DB2587 /* YouTubeKit in Frameworks */,
 				FA1D0A0D00000000000000B1 /* FluidAudio in Frameworks */,
+				8835EA16BF67D63C70100258 /* SpeakerKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -149,6 +157,7 @@
 				40DACEB72E75F6ED00E0B532 /* whisperkit-cli */,
 				404291392E793C6C00DB2587 /* YouTubeKit */,
 				FA1D0A0D00000000000000B2 /* FluidAudio */,
+				A49FD834A1042B6380E52F76 /* SpeakerKit */,
 			);
 			productName = Transcribe;
 			productReference = 40DACE4D2E75861E00E0B532 /* Transcribe.app */;
@@ -171,8 +180,6 @@
 				40DACE5E2E75861F00E0B532 /* TranscribeTests */,
 			);
 			name = TranscribeTests;
-			packageProductDependencies = (
-			);
 			productName = TranscribeTests;
 			productReference = 40DACE5B2E75861F00E0B532 /* TranscribeTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -194,8 +201,6 @@
 				40DACE682E75861F00E0B532 /* TranscribeUITests */,
 			);
 			name = TranscribeUITests;
-			packageProductDependencies = (
-			);
 			productName = TranscribeUITests;
 			productReference = 40DACE652E75861F00E0B532 /* TranscribeUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
@@ -709,15 +714,20 @@
 			package = 40DACEB42E75F6ED00E0B532 /* XCRemoteSwiftPackageReference "WhisperKit" */;
 			productName = WhisperKit;
 		};
-		FA1D0A0D00000000000000B2 /* FluidAudio */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = FA1D0A0D00000000000000B3 /* XCRemoteSwiftPackageReference "FluidAudio" */;
-			productName = FluidAudio;
-		};
 		40DACEB72E75F6ED00E0B532 /* whisperkit-cli */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 40DACEB42E75F6ED00E0B532 /* XCRemoteSwiftPackageReference "WhisperKit" */;
 			productName = "whisperkit-cli";
+		};
+		A49FD834A1042B6380E52F76 /* SpeakerKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 40DACEB42E75F6ED00E0B532 /* XCRemoteSwiftPackageReference "WhisperKit" */;
+			productName = SpeakerKit;
+		};
+		FA1D0A0D00000000000000B2 /* FluidAudio */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FA1D0A0D00000000000000B3 /* XCRemoteSwiftPackageReference "FluidAudio" */;
+			productName = FluidAudio;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
