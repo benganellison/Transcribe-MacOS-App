@@ -1835,6 +1835,28 @@ class TranscriptionViewModel: ObservableObject {
     /// Global word index already refined, so each tick only rebuilds the growing edge
     /// (not the whole transcript — the CPU hog on long files).
     private var lastRefinedWordCount = 0
+    /// Incremental Whisper-word cache: completed 30s windows are split once and kept,
+    /// so we don't re-split the entire growing transcript every tick (the O(n²) hog
+    /// that made base as slow as large).
+    private var cachedWhisperWords: [String] = []
+    private var cachedCompletedWindows = 0
+
+    /// Whisper words so far, splitting only the in-progress window each call.
+    private func incrementalWhisperWords(_ update: TranscriptionUpdate) -> [String] {
+        let coveredWindows = Int(update.coveredUntil / 30.0)
+        let segs = update.segments
+        let completed = min(coveredWindows, segs.count)
+        while cachedCompletedWindows < completed {
+            let words = segs[cachedCompletedWindows].text.split(whereSeparator: { $0 == " " || $0 == "\n" }).map(String.init)
+            cachedWhisperWords.append(contentsOf: words)
+            cachedCompletedWindows += 1
+        }
+        let inProgress = segs.dropFirst(completed).flatMap {
+            $0.text.split(whereSeparator: { $0 == " " || $0 == "\n" }).map(String.init)
+        }
+        return cachedWhisperWords + inProgress
+    }
+
     /// Cancellable handles + flag for the Stop button.
     private var orchestrationTask: Task<Void, Never>?
     private var transcriptionStreamTask: Task<Void, Never>?
@@ -2206,6 +2228,9 @@ class TranscriptionViewModel: ObservableObject {
     }
     
     private func startWhisperKitTranscription() {
+        // Reset the incremental Whisper-word cache for this run.
+        cachedWhisperWords = []
+        cachedCompletedWindows = 0
         // Original streaming WhisperKit implementation
         // Reuse the prewarmed service from the draft path if present; else create one.
         if transcriptionService == nil {
@@ -2239,9 +2264,9 @@ class TranscriptionViewModel: ObservableObject {
                                 let diarizedActive = !self.diarizedUtterances.isEmpty
                                 if diarizedActive {
                                     // The diarized turns are the display — skip the spliced
-                                    // plain-text build (not shown). Split once, reuse.
-                                    let whisperWords = update.text.split(whereSeparator: { $0 == " " || $0 == "\n" }).map(String.init)
-                                    self.transcribedText = update.text
+                                    // plain-text build AND the transcribedText publish (not
+                                    // shown; set at completion). Incremental word split.
+                                    let whisperWords = self.incrementalWhisperWords(update)
                                     self.wordCount = whisperWords.count
                                     if whisperWords.count > self.lastRefinedWordCount {
                                         // Positional (word-index) refinement: keep the draft's
